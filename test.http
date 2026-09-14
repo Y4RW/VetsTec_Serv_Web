@@ -1,0 +1,8 @@
+### 1. Test the dynamic product route (Change '1' to an ID that exists in your DB)
+GET http://localhost:3000/api/productos/1
+
+### 2. Test what happens when a product doesn't exist (Error 404 test)
+GET http://localhost:3000/api/productos/999
+
+### Consultar API Externa de Razas
+GET http://localhost:3000/api/razas-perros

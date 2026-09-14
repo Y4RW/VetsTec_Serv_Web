@@ -3,6 +3,7 @@ console.log("Prueba Localizacion base:", process.env.DATABASE_URL); // temporary
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,7 +17,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// DB cntn
+// DB cnnect
 // transaction pooler (spbse)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -34,17 +35,60 @@ pool.connect((err, client, release) => {
     release();
 });
 
-// test route map schema
-app.get('/api/configuracion', async (req, res) => {
+// ruta dinamica para fetch de un producto con id
+app.get('/api/productos/:id', async (req, res) => {
+    // capturar ruta dinamica desde url
+    const productoId = req.params.id;
+
     try {
-        const { rows } = await pool.query('SELECT * FROM configuracion_negocio LIMIT 1');
-        res.json({ success: true, data: rows });
+        // ver la db usando una query parametrizada (avoid sql injections)
+        const queryText = 'SELECT * FROM productos WHERE id = $1';
+        const { rows } = await pool.query(queryText, [productoId]);
+
+        // checar si existe
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `Product with ID ${productoId} not found`
+            });
+        }
+
+        // regresar el producto encontrado como Yeison
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, error: 'Database query failed' });
+        console.error('Error fetching product:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching product'
+        });
     }
 });
 
 app.listen(PORT, () => {
     console.log(`VetsTec API running on http://localhost:${PORT}`);
+
+    // consume una API Externa (Terceros) usando Axios
+app.get('/api/razas-perros', async (req, res) => {
+    try {
+        // peticion física a la API externa de Dog CEO
+        const response = await axios.get('https://dog.ceo/api/breeds/list/all');
+        
+        // Mandamos la data de la API externa como respuesta JSON
+        res.json({
+            success: true,
+            origen: 'API Externa (Dog CEO)',
+            data: response.data.message
+        });
+    } catch (error) {
+        console.error('Error al consultar API externa:', error.message);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error comunicándose con la API externa' 
+        });
+    }
+});
 });
