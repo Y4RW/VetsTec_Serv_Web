@@ -68,16 +68,79 @@ app.get('/api/productos/:id', async (req, res) => {
     }
 });
 
+// CRUD API Mascotas, Fase 3
+// create (post)
+app.post('/api/mascotas', async (req, res) =>{
+    const { nombre, raza, edad, peso } = req.body;
+    try {
+        const query = 'INSERT INTO mascotas_trial (nombre, raza, edad, peso) VALUES ($1, $2, $3, $4) RETURNING *';
+        const { rows } = await pool.query(query, [nombre, raza, edad, peso]);
+        res.status(201).json({ success: true, data: rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message});
+    }
+});
+
+// read (get)
+app.get('/api/mascotas', async (req, res) => {
+    try {
+        const { rows } = await pool.query('SELECT * FROM mascotas_trial ORDER BY id ASC');
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// update (put)
+app.put('/api/mascotas/:id', async (req, res) => { 
+    const { id } = req.params;
+    const { nombre, raza, edad, peso } = req.body;
+    try {
+        const query = 'UPDATE mascotas_trial SET nombre = $1, raza = $2, edad = $3, peso = $4 WHERE id = $5 RETURNING *';
+        const { rows } = await pool.query(query, [nombre, raza, edad, peso, id]);
+        
+        
+        if (rows.length === 0) {  // si no encuentra el id
+            return res.status(404).json({ success: false, message: 'Mascota no encontrada' });
+        }
+        
+        
+        res.json({ success: true, data: rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// delete (delete)
+app.delete('/api/mascotas/:id', async (req, res) => { // Agregada la diagonal inicial
+    const { id } = req.params;
+    try {
+        
+        const { rows } = await pool.query('DELETE FROM mascotas_trial WHERE id = $1 RETURNING *', [id]); 
+        
+        
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Mascota no encontrada' });
+        }
+        
+        res.json({ success: true, message: 'Registro de mascota eliminado correctamente' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+
+
 app.listen(PORT, () => {
     console.log(`VetsTec API running on http://localhost:${PORT}`);
 
-    // consume una API Externa (Terceros) usando Axios
+    // consume una API Externa (razas perros) usando axios
 app.get('/api/razas-perros', async (req, res) => {
     try {
-        // peticion física a la API externa de Dog CEO
+        // peticion física a la API externa
         const response = await axios.get('https://dog.ceo/api/breeds/list/all');
         
-        // Mandamos la data de la API externa como respuesta JSON
+        // mandamos la data de la API como respuesta JSON
         res.json({
             success: true,
             origen: 'API Externa (Dog CEO)',
@@ -91,4 +154,7 @@ app.get('/api/razas-perros', async (req, res) => {
         });
     }
 });
+
+app.use(express.json()); // node reads req.body
+
 });

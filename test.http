@@ -6,3 +6,36 @@ GET http://localhost:3000/api/productos/999
 
 ### Consultar API Externa de Razas
 GET http://localhost:3000/api/razas-perros
+
+
+
+### 1. Prueba POST: Nuevo registro
+POST http://localhost:3000/api/mascotas
+Content-Type: application/json
+
+{
+  "nombre": "Loki",
+  "raza": "husky",
+  "edad": 2,
+  "peso": 22.5
+}
+
+### 2. Prueba GET: Ver que se guardó (Persistencia)
+GET http://localhost:3000/api/mascotas
+
+### 3. Prueba PUT: Actualizar peso (asumiendo que su ID es 1)
+PUT http://localhost:3000/api/mascotas/1
+Content-Type: application/json
+
+{
+  "nombre": "Loki",
+  "raza": "husky",
+  "edad": 3,
+  "peso": 24.1
+}
+
+### 4. Prueba DELETE: Borrar el registro
+DELETE http://localhost:3000/api/mascotas/1
+
+### 5. Prueba GET Final: Confirmar que ya no existe (Arreglo vacío)
+GET http://localhost:3000/api/mascotas
