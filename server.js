@@ -4,10 +4,56 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const axios = require('axios');
+const multer = require('multer');
+const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
+const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
+
+const registroUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    const permitidos = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!permitidos.includes(file.mimetype)) {
+      return cb(
+        new Error("Solo se permiten imágenes JPG, PNG o WEBP")
+      );
+    }
+
+    cb(null, true);
+  },
+});
 
 const app = express();
 
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SECRET_KEY,
+  {
+    realtime: {
+      transport: WebSocket,
+    },
+  }
+);
+
 const PORT = process.env.PORT || 3000;
+
+const emailTransporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_APP_PASSWORD,
+  },
+});
 
 /* =========================================================
    MIDDLEWARES
@@ -1124,6 +1170,704 @@ app.post('/api/contacto', async (req, res) => {
     });
   }
 });
+
+async function subirArchivoASupabase(
+  file,
+  bucket,
+  carpeta = 'general',
+  esPublico = false
+) {
+  if (!file) {
+    throw new Error('No se recibió ningún archivo');
+  }
+
+  const tiposPermitidos = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+  };
+
+  const extension = tiposPermitidos[file.mimetype];
+
+  if (!extension) {
+    throw new Error(
+      'Solo se permiten imágenes JPG, PNG o WEBP'
+    );
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error(
+      'La imagen no puede superar los 5 MB'
+    );
+  }
+
+  const nombreArchivo =
+    `${carpeta}/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${extension}`;
+
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(nombreArchivo, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+    });
+
+  if (error) {
+    throw error;
+  }
+
+  if (esPublico) {
+    const { data } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(nombreArchivo);
+
+    return {
+      path: nombreArchivo,
+      publicUrl: data.publicUrl,
+    };
+  }
+
+  return {
+    path: nombreArchivo,
+  };
+}
+
+app.post(
+  "/api/registro-negocio",
+  registroUpload.fields([
+    { name: "logo", maxCount: 1 },
+    { name: "evidencia", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const client = await pool.connect();
+
+    let logoPath = null;
+    let evidenciaPath = null;
+
+    try {
+      const {
+        nombreEstablecimiento,
+        tipoServicio,
+        telefonoWhatsapp,
+        correoContacto,
+        direccion,
+        codigoPostal,
+        descripcion,
+        latitud,
+        longitud,
+        correo,
+        password,
+        nombreResponsable,
+        cedulaProfesional,
+      } = req.body;
+
+      // ==========================================
+      // VALIDACIONES
+      // ==========================================
+
+      const tiposPermitidos = [
+        "VETERINARIA",
+        "ESTETICA",
+        "AMBAS",
+      ];
+
+      if (
+        !nombreEstablecimiento ||
+        !tipoServicio ||
+        !telefonoWhatsapp ||
+        !correoContacto ||
+        !direccion ||
+        !codigoPostal ||
+        !latitud ||
+        !longitud ||
+        !correo ||
+        !password
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Faltan datos obligatorios para realizar el registro.",
+        });
+      }
+
+      if (!tiposPermitidos.includes(tipoServicio)) {
+        return res.status(400).json({
+          success: false,
+          message: "Tipo de establecimiento no válido.",
+        });
+      }
+
+      if (!/^\d{5}$/.test(codigoPostal)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "El código postal debe contener 5 dígitos.",
+        });
+      }
+
+      if (password.length < 10) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "La contraseña debe tener al menos 10 caracteres.",
+        });
+      }
+
+      // Veterinaria o negocio mixto:
+      // requiere responsable y cédula.
+      if (
+        ["VETERINARIA", "AMBAS"].includes(tipoServicio) &&
+        (!nombreResponsable || !cedulaProfesional)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Las veterinarias deben indicar al responsable veterinario y su cédula profesional.",
+        });
+      }
+
+      // Estética:
+      // requiere fotografía del establecimiento.
+      if (
+        tipoServicio === "ESTETICA" &&
+        !req.files?.evidencia?.[0]
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "La estética debe adjuntar una fotografía del establecimiento.",
+        });
+      }
+
+      // Revisar correo duplicado
+      const usuarioExistente = await client.query(
+        `
+        SELECT id
+        FROM usuarios_negocio
+        WHERE LOWER(correo) = LOWER($1)
+        LIMIT 1
+        `,
+        [correo]
+      );
+
+      if (usuarioExistente.rowCount > 0) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Ya existe una cuenta registrada con ese correo.",
+        });
+      }
+
+      await client.query("BEGIN");
+
+      // ==========================================
+      // CREAR NEGOCIO
+      // ==========================================
+
+      const negocioResult = await client.query(
+        `
+        INSERT INTO configuracion_negocio (
+          nombre_establecimiento,
+          tipo_servicio,
+          telefono_whatsapp,
+          direccion,
+          codigo_postal,
+          correo_contacto,
+          descripcion,
+          latitud,
+          longitud,
+          activo_directorio
+        )
+        VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9, FALSE
+        )
+        RETURNING id
+        `,
+        [
+          nombreEstablecimiento.trim(),
+          tipoServicio,
+          telefonoWhatsapp.trim(),
+          direccion.trim(),
+          codigoPostal.trim(),
+          correoContacto.trim().toLowerCase(),
+          descripcion?.trim() || null,
+          latitud || null,
+          longitud || null,
+        ]
+      );
+
+      const idNegocio = negocioResult.rows[0].id;
+
+      // ==========================================
+      // SUBIR LOGO
+      // ==========================================
+
+      let logoUrl = null;
+
+      if (req.files?.logo?.[0]) {
+        const resultadoLogo =
+          await subirArchivoASupabase(
+            req.files.logo[0],
+            "logos-negocios",
+            `negocio-${idNegocio}`,
+            true
+          );
+
+        logoPath = resultadoLogo.path;
+        logoUrl = resultadoLogo.publicUrl;
+
+        await client.query(
+          `
+          UPDATE configuracion_negocio
+          SET logo_url = $1
+          WHERE id = $2
+          `,
+          [logoUrl, idNegocio]
+        );
+      }
+
+      // ==========================================
+      // SUBIR EVIDENCIA PRIVADA
+      // ==========================================
+
+      if (req.files?.evidencia?.[0]) {
+        const resultadoEvidencia =
+          await subirArchivoASupabase(
+            req.files.evidencia[0],
+            "evidencias-negocios",
+            `negocio-${idNegocio}`,
+            false
+          );
+
+        evidenciaPath = resultadoEvidencia.path;
+      }
+
+      // ==========================================
+      // CONTRASEÑA CIFRADA
+      // ==========================================
+
+      const passwordHash = await bcrypt.hash(
+        password,
+        12
+      );
+
+      const usuarioResult = await client.query(
+        `
+        INSERT INTO usuarios_negocio (
+          id_negocio,
+          correo,
+          password_hash,
+          correo_verificado,
+          dos_pasos_activo,
+          activo
+        )
+        VALUES ($1, $2, $3, FALSE, FALSE, TRUE)
+        RETURNING id
+        `,
+        [
+          idNegocio,
+          correo.trim().toLowerCase(),
+          passwordHash,
+        ]
+      );
+
+      // ==========================================
+      // VERIFICACIÓN DEL NEGOCIO
+      // ==========================================
+
+      await client.query(
+        `
+        INSERT INTO verificacion_negocio (
+          id_negocio,
+          estado,
+          nombre_responsable,
+          cedula_profesional,
+          foto_establecimiento_url
+        )
+        VALUES ($1, 'PENDIENTE', $2, $3, $4)
+        `,
+        [
+          idNegocio,
+          nombreResponsable?.trim() || null,
+          cedulaProfesional?.trim() || null,
+          evidenciaPath,
+        ]
+      );
+
+      await client.query("COMMIT");
+
+      let correoEnviado = true;
+
+      try {
+        await crearYEnviarCodigoVerificacion(
+          usuarioResult.rows[0].id,
+          correo.trim().toLowerCase(),
+          nombreEstablecimiento.trim()
+        );
+      } catch (emailError) {
+        correoEnviado = false;
+
+        console.error(
+          "⚠️ El negocio se registró, pero no se pudo enviar el correo:",
+          emailError.message
+        );
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: correoEnviado
+          ? "Solicitud registrada. Revisa tu correo para verificar tu cuenta."
+          : "Solicitud registrada, pero no pudimos enviar el código. Puedes solicitar uno nuevo.",
+        data: {
+          idNegocio,
+          idUsuario: usuarioResult.rows[0].id,
+          estado: "PENDIENTE",
+          activoDirectorio: false,
+          correoVerificacionEnviado: correoEnviado,
+        },
+      });
+
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
+
+      // Si falló la BD después de subir archivos,
+      // eliminamos los archivos huérfanos.
+      if (logoPath) {
+        await supabase.storage
+          .from("logos-negocios")
+          .remove([logoPath])
+          .catch(() => {});
+      }
+
+      if (evidenciaPath) {
+        await supabase.storage
+          .from("evidencias-negocios")
+          .remove([evidenciaPath])
+          .catch(() => {});
+      }
+
+      console.error(
+        "❌ Error en registro de negocio:",
+        error.message
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "No fue posible completar el registro.",
+      });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+app.post("/api/enviar-codigo-verificacion", async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { correo } = req.body;
+
+    if (!correo) {
+      return res.status(400).json({
+        success: false,
+        message: "Debes indicar el correo.",
+      });
+    }
+
+    const usuarioResult = await client.query(
+      `
+      SELECT
+        u.id,
+        u.correo,
+        u.correo_verificado,
+        n.nombre_establecimiento
+      FROM usuarios_negocio u
+      INNER JOIN configuracion_negocio n
+        ON n.id = u.id_negocio
+      WHERE LOWER(u.correo) = LOWER($1)
+      LIMIT 1
+      `,
+      [correo.trim()]
+    );
+
+    if (usuarioResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No existe una cuenta con ese correo.",
+      });
+    }
+
+    const usuario = usuarioResult.rows[0];
+
+    if (usuario.correo_verificado) {
+      return res.status(400).json({
+        success: false,
+        message: "Este correo ya fue verificado.",
+      });
+    }
+
+    await crearYEnviarCodigoVerificacion(
+      usuario.id,
+      usuario.correo,
+      usuario.nombre_establecimiento
+    );
+
+    return res.json({
+      success: true,
+      message:
+        "Se envió un código de verificación al correo registrado.",
+    });
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
+    console.error(
+      "❌ Error enviando código:",
+      error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "No fue posible enviar el código de verificación.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/api/verificar-correo", async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { correo, codigo } = req.body;
+
+    if (!correo || !codigo) {
+      return res.status(400).json({
+        success: false,
+        message: "Correo y código son obligatorios.",
+      });
+    }
+
+    if (!/^\d{6}$/.test(String(codigo))) {
+      return res.status(400).json({
+        success: false,
+        message: "El código debe contener 6 dígitos.",
+      });
+    }
+
+    const usuarioResult = await client.query(
+      `
+      SELECT id, correo_verificado
+      FROM usuarios_negocio
+      WHERE LOWER(correo) = LOWER($1)
+      LIMIT 1
+      `,
+      [correo.trim()]
+    );
+
+    if (usuarioResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No existe una cuenta con ese correo.",
+      });
+    }
+
+    const usuario = usuarioResult.rows[0];
+
+    if (usuario.correo_verificado) {
+      return res.json({
+        success: true,
+        message: "El correo ya se encuentra verificado.",
+      });
+    }
+
+    const tokenResult = await client.query(
+      `
+      SELECT *
+      FROM tokens_seguridad
+      WHERE id_usuario = $1
+        AND tipo = 'VERIFICAR_CORREO'
+        AND usado = FALSE
+      ORDER BY fecha_creacion DESC
+      LIMIT 1
+      `,
+      [usuario.id]
+    );
+
+    if (tokenResult.rowCount === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No existe un código de verificación vigente.",
+      });
+    }
+
+    const token = tokenResult.rows[0];
+
+    if (new Date(token.fecha_expiracion) < new Date()) {
+      await client.query(
+        `
+        UPDATE tokens_seguridad
+        SET usado = TRUE
+        WHERE id = $1
+        `,
+        [token.id]
+      );
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "El código ha expirado. Solicita uno nuevo.",
+      });
+    }
+
+    if (token.intentos >= 5) {
+      return res.status(429).json({
+        success: false,
+        message:
+          "Se alcanzó el límite de intentos. Solicita un nuevo código.",
+      });
+    }
+
+    const codigoCorrecto = await bcrypt.compare(
+      String(codigo),
+      token.codigo_hash
+    );
+
+    if (!codigoCorrecto) {
+      await client.query(
+        `
+        UPDATE tokens_seguridad
+        SET intentos = intentos + 1
+        WHERE id = $1
+        `,
+        [token.id]
+      );
+
+      return res.status(400).json({
+        success: false,
+        message: "El código no es correcto.",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    await client.query(
+      `
+      UPDATE usuarios_negocio
+      SET correo_verificado = TRUE
+      WHERE id = $1
+      `,
+      [usuario.id]
+    );
+
+    await client.query(
+      `
+      UPDATE tokens_seguridad
+      SET usado = TRUE
+      WHERE id = $1
+      `,
+      [token.id]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({
+      success: true,
+      message: "Correo verificado correctamente.",
+    });
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
+    console.error(
+      "❌ Error verificando correo:",
+      error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "No fue posible verificar el correo.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+async function crearYEnviarCodigoVerificacion(
+  idUsuario,
+  correo,
+  nombreEstablecimiento
+) {
+  const codigo = crypto
+    .randomInt(100000, 1000000)
+    .toString();
+
+  const codigoHash = await bcrypt.hash(codigo, 10);
+
+  await pool.query(
+    `
+    UPDATE tokens_seguridad
+    SET usado = TRUE
+    WHERE id_usuario = $1
+      AND tipo = 'VERIFICAR_CORREO'
+      AND usado = FALSE
+    `,
+    [idUsuario]
+  );
+
+  await pool.query(
+    `
+    INSERT INTO tokens_seguridad (
+      id_usuario,
+      tipo,
+      codigo_hash,
+      fecha_expiracion,
+      usado,
+      intentos
+    )
+    VALUES (
+      $1,
+      'VERIFICAR_CORREO',
+      $2,
+      CURRENT_TIMESTAMP + INTERVAL '10 minutes',
+      FALSE,
+      0
+    )
+    `,
+    [idUsuario, codigoHash]
+  );
+
+  await emailTransporter.sendMail({
+    from: `"VetStec" <${process.env.EMAIL_USER}>`,
+    to: correo,
+    subject: "Verifica tu correo - VetStec",
+    text: `
+Hola.
+
+Gracias por registrar ${nombreEstablecimiento} en VetStec.
+
+Tu código de verificación es:
+
+${codigo}
+
+El código estará disponible durante 10 minutos.
+
+Si tú no realizaste este registro, puedes ignorar este mensaje.
+
+Equipo VetStec
+    `,
+  });
+}
 
 /* =========================================================
    404 PARA RUTAS API INEXISTENTES
