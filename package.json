@@ -18,7 +18,8 @@
     "seed:public": "node scripts/datos-prueba/seed-public-test.js",
     "test:cp": "node scripts/pruebas/probar-cp.js",
     "test:email": "node scripts/pruebas/test-email.js",
-    "test:storage": "node scripts/pruebas/test-storage.js"
+    "test:storage": "node scripts/pruebas/test-storage.js",
+    "migrate:sesiones": "node scripts/migraciones/migrate-sesiones.js"
   },
   "keywords": [],
   "author": "",

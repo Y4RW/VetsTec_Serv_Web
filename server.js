@@ -65,6 +65,9 @@ const emailTransporter = nodemailer.createTransport({
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  ...(process.env.FRONTEND_URL
+    ? [new URL(process.env.FRONTEND_URL).origin]
+    : []),
 ];
 
 app.use(
@@ -1759,6 +1762,14 @@ const crearYEnviarCodigoVerificacion =
       emailTransporter,
     }
   );
+
+const { requireSesion, requireNegocioAprobado } =
+  require('./routes/autenticacion')(app, {
+    pool,
+    bcrypt,
+    crypto,
+    allowedOrigins,
+  });
 
 /* =========================================================
    404 PARA RUTAS API INEXISTENTES

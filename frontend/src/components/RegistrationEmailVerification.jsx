@@ -515,10 +515,10 @@ export default function RegistrationEmailVerification({
 
           <div className="register-actions">
             <Link
-              to="/"
+              to="/acceso"
               className="btn btn-primary email-home"
             >
-              Ir al inicio
+              Ir a iniciar sesión
             </Link>
           </div>
         </>

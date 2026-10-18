@@ -2809,3 +2809,72 @@ button, input, textarea, select { font: inherit; }
     padding: 16px;
   }
 }
+
+/* Acceso, logo y panel inicial de VetStec */
+.brand-logo { display: block; width: 100px; height: 100px; object-fit: contain; }
+.header-inner { min-height: 108px; }
+.login-password input { min-width: 0; }
+.login-page button, .account-panel button, .session-message button { cursor: pointer; }
+.login-page button:disabled, .account-panel button:disabled {
+  cursor: wait; opacity: .65; transform: none;
+}
+.login-form .auth-error { margin: 0; }
+.auth-error {
+  padding: 14px 16px; border-radius: 12px; border: 1px solid #fecaca;
+  background: #fff1f0; color: #9b1c1c; line-height: 1.6; overflow-wrap: anywhere;
+}
+.auth-help { margin: 0; color: var(--muted); line-height: 1.6; }
+.auth-text-link { color: var(--navy); font-weight: 700; }
+.session-message { padding-block: 64px; min-height: 50vh; }
+.account-panel { padding: 48px 0 72px; background: #f5f9fc; min-height: 65vh; }
+.panel-container { max-width: 1040px; }
+.panel-heading {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 24px; margin-bottom: 28px;
+}
+.panel-heading > div { min-width: 0; }
+.panel-heading .eyebrow { margin-bottom: 10px; }
+.panel-heading h1 {
+  margin: 0; color: var(--navy-dark); font-size: clamp(1.9rem, 4vw, 2.8rem);
+  line-height: 1.15; letter-spacing: -.035em; overflow-wrap: anywhere;
+}
+.panel-heading p { margin: 14px 0 0; color: var(--muted); line-height: 1.6; }
+.panel-heading > button { flex-shrink: 0; }
+.panel-status {
+  padding: 28px; border: 1px solid #ead6a7; border-left: 5px solid #b98416;
+  border-radius: 18px; background: #fffbef; margin-bottom: 24px;
+}
+.panel-status.approved { background: #edfaf5; border-color: #a6dbc7; border-left-color: #16835f; }
+.panel-status.restricted { background: #fff5f4; border-color: #edc6c1; border-left-color: #b84c40; }
+.panel-status-label { font-size: .85rem; font-weight: 750; color: #655125; }
+.panel-status.approved .panel-status-label { color: #17654c; }
+.panel-status.restricted .panel-status-label { color: #8a362e; }
+.panel-status h2 { margin: 10px 0; color: var(--navy-dark); font-size: 1.35rem; }
+.panel-status p { line-height: 1.7; margin: 0 0 20px; overflow-wrap: anywhere; }
+.panel-reason { white-space: pre-wrap; }
+.panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.panel-card { padding: 28px; border: 1px solid var(--line); border-radius: 18px; background: #fff; min-width: 0; }
+.panel-card h2 { margin: 0 0 22px; font-size: 1.15rem; color: var(--navy-dark); }
+.panel-card dl { margin: 0; display: grid; gap: 22px; }
+.panel-card dt { margin-bottom: 7px; color: var(--muted); font-size: .9rem; }
+.panel-card dd { margin: 0; color: var(--navy-dark); font-weight: 700; overflow-wrap: anywhere; }
+.panel-card .panel-verified { color: #17654c; }
+.panel-footer { margin-top: 24px; color: var(--muted); font-size: .92rem; line-height: 1.7; }
+.panel-footer p { margin: 0 0 12px; }
+.panel-links { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+.panel-links a { color: var(--navy); font-weight: 700; min-height: 44px; display: inline-flex; align-items: center; }
+.account-panel :is(a, button):focus-visible, .session-message button:focus-visible {
+  outline: 3px solid var(--turquoise-dark); outline-offset: 3px;
+}
+@media (max-width: 700px) {
+  .brand-logo { width: 84px; height: 84px; }
+  .header-inner { min-height: 92px; }
+  .panel-heading { flex-direction: column; }
+  .panel-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .account-panel { padding-block: 30px 48px; }
+  .panel-status, .panel-card { padding: 20px; }
+  .panel-heading > button { width: 100%; }
+  .panel-status button { width: 100%; padding: 10px 14px; white-space: normal; }
+}
