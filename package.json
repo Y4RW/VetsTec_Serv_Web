@@ -19,7 +19,9 @@
     "test:cp": "node scripts/pruebas/probar-cp.js",
     "test:email": "node scripts/pruebas/test-email.js",
     "test:storage": "node scripts/pruebas/test-storage.js",
-    "migrate:sesiones": "node scripts/migraciones/migrate-sesiones.js"
+    "migrate:sesiones": "node scripts/migraciones/migrate-sesiones.js",
+    "migrate:admin": "node scripts/migraciones/migrate-admin.js",
+    "admin:crear": "node scripts/administracion/crear-admin.js"
   },
   "keywords": [],
   "author": "",

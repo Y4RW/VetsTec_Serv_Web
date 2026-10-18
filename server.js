@@ -1771,6 +1771,13 @@ const { requireSesion, requireNegocioAprobado } =
     allowedOrigins,
   });
 
+  require('./routes/autenticacionAdmin')(app, {
+  pool,
+  bcrypt,
+  crypto,
+  allowedOrigins,
+});
+
 /* =========================================================
    404 PARA RUTAS API INEXISTENTES
    ========================================================= */
