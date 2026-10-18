@@ -5,6 +5,7 @@ const navItems = [
   { to: '/', label: 'Inicio', end: true },
   { to: '/directorio', label: 'Directorio' },
   { to: '/contacto', label: 'Contacto' },
+  { to: '/acceso', label: 'Iniciar sesión' },
 ];
 
 export default function PublicLayout() {
