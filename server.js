@@ -378,6 +378,7 @@ app.get('/api/razas-perros', async (req, res) => {
    ========================================================= */
 
 app.get('/api/establecimientos', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const query = `
       SELECT
@@ -413,6 +414,14 @@ app.get('/api/establecimientos', async (req, res) => {
         ON h.id_negocio = n.id
 
       WHERE n.activo_directorio = TRUE
+      AND EXISTS (
+        SELECT 1 FROM verificacion_negocio v
+        WHERE v.id_negocio = n.id AND v.estado = 'APROBADO'
+      )
+      AND EXISTS (
+        SELECT 1 FROM usuarios_negocio u
+        WHERE u.id_negocio = n.id AND u.activo = TRUE AND u.correo_verificado = TRUE
+      )
 
       GROUP BY n.id
 
@@ -561,6 +570,15 @@ app.get(
             FROM configuracion_negocio
             WHERE id = $1
               AND activo_directorio = TRUE
+              AND EXISTS (
+                SELECT 1 FROM verificacion_negocio v
+                WHERE v.id_negocio = configuracion_negocio.id AND v.estado = 'APROBADO'
+              )
+              AND EXISTS (
+                SELECT 1 FROM usuarios_negocio u
+                WHERE u.id_negocio = configuracion_negocio.id
+                  AND u.activo = TRUE AND u.correo_verificado = TRUE
+              )
             LIMIT 1
           `,
           [negocioId]
@@ -904,6 +922,15 @@ app.post('/api/solicitudes-cita', async (req, res) => {
 
           WHERE id = $1
             AND activo_directorio = TRUE
+            AND EXISTS (
+              SELECT 1 FROM verificacion_negocio v
+              WHERE v.id_negocio = configuracion_negocio.id AND v.estado = 'APROBADO'
+            )
+            AND EXISTS (
+              SELECT 1 FROM usuarios_negocio u
+              WHERE u.id_negocio = configuracion_negocio.id
+                AND u.activo = TRUE AND u.correo_verificado = TRUE
+            )
 
           LIMIT 1
         `,
@@ -1777,6 +1804,8 @@ const { requireSesion, requireNegocioAprobado } =
   crypto,
   allowedOrigins,
 });
+
+  require('./routes/solicitudesAdmin')(app, { pool, supabase });
 
 /* =========================================================
    404 PARA RUTAS API INEXISTENTES

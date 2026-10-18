@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
-import { adminApi } from './adminApi';
+import { adminApi, solicitudesApi } from './adminApi';
+import SolicitudesAdmin from './SolicitudesAdmin';
 import './admin.css';
 
 const sinSesion = { estado: 'anonimo', datos: null, error: '' };
@@ -58,7 +59,7 @@ function AccesoAdmin({ iniciar, aviso }) {
   </main>;
 }
 
-function PanelAdmin({ datos, cerrar, comprobar }) {
+function PanelAdmin({ datos, cerrar, comprobar, solicitar }) {
   const [saliendo, setSaliendo] = useState(false);
   const [error, setError] = useState('');
   async function salir() {
@@ -91,25 +92,24 @@ function PanelAdmin({ datos, cerrar, comprobar }) {
         Comprobar sesión
       </button>
     </section>
-    <section className="admin-card">
-      <h2>Solicitudes de establecimientos</h2>
-      <p>La revisión de solicitudes se habilitará en la siguiente etapa.</p>
-    </section>
+    <SolicitudesAdmin solicitar={solicitar} />
     <Link to="/">Ir a la página pública</Link>
   </main>;
 }
 
 export default function AdminModule() {
   const [acceso, setAcceso] = useState({ ...sinSesion, estado: 'cargando' });
+  const [actividad, setActividad] = useState(Date.now());
+  const pendientes = useRef(0);
   const revision = useRef(0);
   const operando = useRef(false);
   const estadoActual = useRef(acceso.estado);
   estadoActual.current = acceso.estado;
 
   const comprobar = useCallback(async () => {
-    if (operando.current) return;
+    if (operando.current || pendientes.current > 0) return;
     const actual = ++revision.current;
-    setAcceso({ ...sinSesion, estado: 'cargando' });
+    if (estadoActual.current !== 'autenticado') setAcceso({ ...sinSesion, estado: 'cargando' });
     try {
       const datos = await adminApi('sesion');
       if (actual === revision.current) setAcceso({ estado: 'autenticado', datos, error: '' });
@@ -117,6 +117,22 @@ export default function AdminModule() {
       if (actual !== revision.current) return;
       setAcceso(error.status === 401 ? sinSesion : { ...sinSesion, estado: 'error', error: error.message });
     }
+  }, []);
+
+  const solicitar = useCallback(async (ruta, opciones) => {
+    const actual = revision.current;
+    pendientes.current += 1;
+    try {
+      const datos = await solicitudesApi(ruta, opciones);
+      if (actual === revision.current) setActividad(Date.now());
+      return datos;
+    } catch (error) {
+      if (error.status === 401 && actual === revision.current) {
+        revision.current += 1;
+        setAcceso({ ...sinSesion, error: 'La sesión terminó. Inicia sesión nuevamente.' });
+      }
+      throw error;
+    } finally { pendientes.current -= 1; }
   }, []);
 
   useEffect(() => {
@@ -140,7 +156,7 @@ export default function AdminModule() {
       setAcceso({ ...sinSesion, error: 'La sesión terminó. Inicia sesión nuevamente.' });
     }, Math.max(0, restante));
     return () => clearTimeout(timer);
-  }, [acceso]);
+  }, [acceso, actividad]);
 
   async function iniciar(correo, password) {
     if (operando.current) return;
@@ -176,7 +192,7 @@ export default function AdminModule() {
     <Route path="acceso" element={conectado ? <Navigate to="/admin/solicitudes" replace /> :
       <AccesoAdmin iniciar={iniciar} aviso={acceso.error} />} />
     <Route path="solicitudes" element={conectado ?
-      <PanelAdmin datos={acceso.datos} cerrar={cerrar} comprobar={comprobar} /> :
+      <PanelAdmin datos={acceso.datos} cerrar={cerrar} comprobar={comprobar} solicitar={solicitar} /> :
       <Navigate to="/admin/acceso" replace />} />
     <Route path="*" element={<Navigate to={conectado ? '/admin/solicitudes' : '/admin/acceso'} replace />} />
   </Routes>;

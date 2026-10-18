@@ -1,8 +1,8 @@
-export async function adminApi(ruta, { method = 'GET', datos } = {}) {
+async function pedirAdmin(ruta, { method = 'GET', datos, imagen = false } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   try {
-    const respuesta = await fetch(`/api/admin/auth/${ruta}`, {
+    const respuesta = await fetch(`/api/admin/${ruta}`, {
       method,
       credentials: 'same-origin',
       cache: 'no-store',
@@ -13,6 +13,7 @@ export async function adminApi(ruta, { method = 'GET', datos } = {}) {
       },
       body: method === 'GET' ? undefined : JSON.stringify(datos || {}),
     });
+    if (imagen && respuesta.ok) return respuesta.blob();
     const contenido = await respuesta.json().catch(() => null);
     if (!respuesta.ok || contenido?.success !== true) {
       const error = new Error(contenido?.message || 'El servidor no pudo completar la operación.');
@@ -28,3 +29,6 @@ export async function adminApi(ruta, { method = 'GET', datos } = {}) {
     clearTimeout(timer);
   }
 }
+
+export const adminApi = (ruta, opciones) => pedirAdmin(`auth/${ruta}`, opciones);
+export const solicitudesApi = (ruta = '', opciones) => pedirAdmin(`solicitudes${ruta}`, opciones);

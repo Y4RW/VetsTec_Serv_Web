@@ -21,7 +21,8 @@
     "test:storage": "node scripts/pruebas/test-storage.js",
     "migrate:sesiones": "node scripts/migraciones/migrate-sesiones.js",
     "migrate:admin": "node scripts/migraciones/migrate-admin.js",
-    "admin:crear": "node scripts/administracion/crear-admin.js"
+    "admin:crear": "node scripts/administracion/crear-admin.js",
+    "migrate:revisiones": "node scripts/migraciones/migrate-revisiones.js"
   },
   "keywords": [],
   "author": "",
