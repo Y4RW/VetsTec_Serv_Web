@@ -1,0 +1,105 @@
+openapi: 3.0.0
+info:
+  title: API VetStec - Gestión Veterinaria y Estética
+  description: Documentación oficial de endpoints para la plataforma VetStec.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Servidor Local Node.js / Express
+
+paths:
+  /pets:
+    get:
+      summary: Obtener la lista de mascotas registradas
+      description: Retorna un listado completo con la información general de las mascotas.
+      responses:
+        '200':
+          description: Lista devuelta correctamente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pet'
+        '500':
+          description: Error interno del servidor.
+
+    post:
+      summary: Registrar una nueva mascota
+      description: Crea un nuevo registro de mascota asociándola a un cliente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewPet'
+      responses:
+        '201':
+          description: Mascota registrada exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+        '400':
+          description: Datos de entrada inválidos o faltantes.
+
+  /pets/{id}:
+    get:
+      summary: Obtener detalles de una mascota por ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID único de la mascota a consultar
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Mascota encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+        '400':
+          description: Formato de ID inválido.
+        '404':
+          description: Mascota no encontrada.
+
+components:
+  schemas:
+    Pet:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        nombre:
+          type: string
+          example: "Max"
+        especie:
+          type: string
+          example: "Perro"
+        raza:
+          type: string
+          example: "Golden Retriever"
+        edad:
+          type: integer
+          example: 3
+    NewPet:
+      type: object
+      required:
+        - nombre
+        - especie
+      properties:
+        nombre:
+          type: string
+          example: "Max"
+        especie:
+          type: string
+          example: "Perro"
+        raza:
+          type: string
+          example: "Golden Retriever"
+        edad:
+          type: integer
+          example: 3

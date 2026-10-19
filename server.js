@@ -10,6 +10,10 @@ const WebSocket = require('ws');
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const fs = require("fs");
+const path = require("path");
+const YAML = require("yaml");
+const swaggerUi = require("swagger-ui-express");
 
 const registroUpload = multer({
   storage: multer.memoryStorage(),
@@ -34,6 +38,14 @@ const registroUpload = multer({
 });
 
 const app = express();
+
+// Cargar la especificación OpenAPI desde openapi.yaml
+const openapiDoc = YAML.parse(
+  fs.readFileSync(path.join(__dirname, "openapi.yaml"), "utf8")
+);
+
+// Servir la interfaz gráfica de Swagger UI en la ruta /api-docs
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDoc));
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
