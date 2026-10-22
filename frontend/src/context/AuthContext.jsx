@@ -1,7 +1,12 @@
+
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { authApi } from '../lib/authApi';
 
 const AuthContext = createContext(null);
+const AVISO = 'vetstec:cambio-sesion';
+function avisar() {
+  try { localStorage.setItem(AVISO, String(Date.now()) + Math.random()); } catch { /* El cierre en esta pestaña funciona sin almacenamiento. */ }
+}
 const sinSesion = { estado: 'anonimo', sesion: null, error: '' };
 
 export function AuthProvider({ children }) {
@@ -29,10 +34,16 @@ export function AuthProvider({ children }) {
     const alMostrar = (event) => {
       if (event.persisted) comprobarSesion();
     };
+    const alInvalidar = () => { revision.current += 1; setAcceso(sinSesion); };
+    const entrePestanas = (event) => { if (event.key === AVISO) comprobarSesion(); };
+    window.addEventListener('storage', entrePestanas);
+    window.addEventListener('vetstec:sesion-vencida', alInvalidar);
     window.addEventListener('focus', comprobarSesion);
     window.addEventListener('pageshow', alMostrar);
     return () => {
       revision.current += 1;
+      window.removeEventListener('storage', entrePestanas);
+      window.removeEventListener('vetstec:sesion-vencida', alInvalidar);
       window.removeEventListener('focus', comprobarSesion);
       window.removeEventListener('pageshow', alMostrar);
     };
@@ -43,6 +54,7 @@ export function AuthProvider({ children }) {
     const sesion = await authApi('login', { method: 'POST', datos: { correo, password } });
     revision.current += 1;
     setAcceso({ estado: 'autenticado', sesion, error: '' });
+    avisar();
   }
 
   async function cerrarSesion() {
@@ -50,6 +62,7 @@ export function AuthProvider({ children }) {
     await authApi('logout', { method: 'POST' });
     revision.current += 1;
     setAcceso(sinSesion);
+    avisar();
   }
 
   return (

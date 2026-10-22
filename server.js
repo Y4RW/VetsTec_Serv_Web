@@ -300,48 +300,6 @@ app.get('/api/health', async (req, res) => {
 });
 
 /* =========================================================
-   PRODUCTOS
-   Ruta que ya tenían
-   ========================================================= */
-
-app.get('/api/productos/:id', async (req, res) => {
-  const productoId = req.params.id;
-
-  try {
-    const queryText =
-      'SELECT * FROM productos WHERE id = $1';
-
-    const { rows } = await pool.query(
-      queryText,
-      [productoId]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Producto con ID ${productoId} no encontrado`,
-      });
-    }
-
-    res.json({
-      success: true,
-      data: rows[0],
-    });
-  } catch (error) {
-    console.error(
-      'Error consultando producto:',
-      error.message
-    );
-
-    res.status(500).json({
-      success: false,
-      message:
-        'Error del servidor al consultar el producto',
-    });
-  }
-});
-
-/* =========================================================
    API EXTERNA - RAZAS DE PERROS
    ========================================================= */
 
@@ -1797,6 +1755,19 @@ const { requireSesion, requireNegocioAprobado } =
     crypto,
     allowedOrigins,
   });
+
+const { requirePropietario, requireSucursal } =
+  require('./routes/propietario')(app, {
+    pool,
+    requireSesion,
+  });
+
+require('./routes/productosPrivados')(app, {
+  pool,
+  requireSesion,
+  requirePropietario,
+  requireSucursal,
+});;
 
   require('./routes/autenticacionAdmin')(app, {
   pool,

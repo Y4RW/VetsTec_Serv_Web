@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import PanelPropietario from '../propietario/PanelPropietario';
 
 const ESTADOS = {
   PENDIENTE: {
@@ -88,6 +89,7 @@ export default function PanelPage() {
             </dl>
           </section>
         </div>
+       <PanelPropietario />
         <div className="panel-footer">
           <p>La sesión termina después de 30 minutos sin actividad o al cumplir 8 horas desde el acceso.</p>
           <div className="panel-links">
