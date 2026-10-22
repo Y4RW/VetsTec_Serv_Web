@@ -39,13 +39,19 @@ const registroUpload = multer({
 
 const app = express();
 
-// Cargar la especificación OpenAPI desde openapi.yaml
+// Documentación de la API con Swagger
 const openapiDoc = YAML.parse(
-  fs.readFileSync(path.join(__dirname, "openapi.yaml"), "utf8")
+  fs.readFileSync(
+    path.join(__dirname, "openapi.yaml"),
+    "utf8"
+  )
 );
 
-// Servir la interfaz gráfica de Swagger UI en la ruta /api-docs
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDoc));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(openapiDoc)
+);
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -61,6 +67,9 @@ const PORT = process.env.PORT || 3000;
 
 const emailTransporter = nodemailer.createTransport({
   service: "gmail",
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 20000,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_APP_PASSWORD,
@@ -74,6 +83,9 @@ const emailTransporter = nodemailer.createTransport({
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  ...(process.env.FRONTEND_URL
+    ? [new URL(process.env.FRONTEND_URL).origin]
+    : []),
 ];
 
 app.use(
@@ -111,6 +123,156 @@ app.use(
 );
 
 app.use(express.json());
+
+require('./routes/geocodificacion')(app, axios);
+
+/* =========================================================
+   CONSULTA DE CÓDIGOS POSTALES
+   ========================================================= */
+
+const cacheCodigosPostales = new Map();
+
+app.get('/api/codigos-postales/:cp', async (req, res) => {
+  const codigoPostal = req.params.cp;
+
+  if (!/^\d{5}$/.test(codigoPostal)) {
+    return res.status(400).json({
+      success: false,
+      message: 'El código postal debe contener exactamente 5 dígitos.',
+    });
+  }
+
+  const guardado = cacheCodigosPostales.get(codigoPostal);
+
+  if (guardado && guardado.vence > Date.now()) {
+    return res.json(guardado.datos);
+  }
+
+  const apiKey =
+    process.env.CODIGOS_POSTALES_API_KEY?.trim();
+
+  if (!apiKey) {
+    return res.status(503).json({
+      success: false,
+      message: 'La consulta de códigos postales no está configurada.',
+    });
+  }
+
+  try {
+    const { data } = await axios.get(
+      `https://api.codigos.zip/api/zip/${codigoPostal}`,
+      {
+        params: {
+          pais: 'MX',
+        },
+
+        headers: {
+          'X-API-Key': apiKey,
+          Accept: 'application/json',
+        },
+
+        timeout: 10000,
+        maxRedirects: 0,
+      }
+    );
+
+    if (
+      data?.codigo !== codigoPostal ||
+      data?.paisCodigo !== 'MX' ||
+      !Array.isArray(data?.colonias)
+    ) {
+      throw new Error('RESPUESTA_POSTAL_INVALIDA');
+    }
+
+    if (data.colonias.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontraron colonias para ese código postal.',
+      });
+    }
+
+    const camposValidos = data.colonias.every((item) =>
+      ['colonia', 'municipio', 'estado'].every((campo) =>
+        typeof item?.[campo] === 'string' &&
+        item[campo].trim()
+      )
+    );
+
+    if (!camposValidos) {
+      throw new Error('RESPUESTA_POSTAL_INVALIDA');
+    }
+
+    const datos = {
+      success: true,
+
+      codigoPostal,
+
+      colonias: data.colonias.map((item) => ({
+        colonia: item.colonia.trim(),
+        municipio: item.municipio.trim(),
+        estado: item.estado.trim(),
+
+        tipoAsentamiento:
+          typeof item.tipoAsentamiento === 'string'
+            ? item.tipoAsentamiento.trim()
+            : '',
+      })),
+    };
+
+    // Reutiliza consultas durante una hora.
+    // Solo guarda datos en memoria; no escribe en la BD.
+    if (cacheCodigosPostales.size >= 250) {
+      cacheCodigosPostales.delete(
+        cacheCodigosPostales.keys().next().value
+      );
+    }
+
+    cacheCodigosPostales.set(codigoPostal, {
+      datos,
+      vence: Date.now() + 60 * 60 * 1000,
+    });
+
+    return res.json(datos);
+  } catch (error) {
+    const estado = error.response?.status;
+
+    if (estado === 404) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontró ese código postal.',
+      });
+    }
+
+    if (estado === 401 || estado === 403) {
+      return res.status(503).json({
+        success: false,
+        message: 'El servicio de códigos postales no está disponible.',
+      });
+    }
+
+    if (estado === 429) {
+      return res.status(503).json({
+        success: false,
+        message: 'Se alcanzó el límite de consultas. Intenta más tarde.',
+      });
+    }
+
+    if (
+      error.code === 'ECONNABORTED' ||
+      error.code === 'ETIMEDOUT'
+    ) {
+      return res.status(504).json({
+        success: false,
+        message: 'La consulta tardó demasiado. Intenta nuevamente.',
+      });
+    }
+
+    return res.status(502).json({
+      success: false,
+      message: 'No fue posible obtener la información del código postal.',
+    });
+  }
+});
 
 /* =========================================================
    POSTGRESQL
@@ -156,48 +318,6 @@ app.get('/api/health', async (req, res) => {
 });
 
 /* =========================================================
-   PRODUCTOS
-   Ruta que ya tenían
-   ========================================================= */
-
-app.get('/api/productos/:id', async (req, res) => {
-  const productoId = req.params.id;
-
-  try {
-    const queryText =
-      'SELECT * FROM productos WHERE id = $1';
-
-    const { rows } = await pool.query(
-      queryText,
-      [productoId]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Producto con ID ${productoId} no encontrado`,
-      });
-    }
-
-    res.json({
-      success: true,
-      data: rows[0],
-    });
-  } catch (error) {
-    console.error(
-      'Error consultando producto:',
-      error.message
-    );
-
-    res.status(500).json({
-      success: false,
-      message:
-        'Error del servidor al consultar el producto',
-    });
-  }
-});
-
-/* =========================================================
    API EXTERNA - RAZAS DE PERROS
    ========================================================= */
 
@@ -234,6 +354,7 @@ app.get('/api/razas-perros', async (req, res) => {
    ========================================================= */
 
 app.get('/api/establecimientos', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const query = `
       SELECT
@@ -269,6 +390,14 @@ app.get('/api/establecimientos', async (req, res) => {
         ON h.id_negocio = n.id
 
       WHERE n.activo_directorio = TRUE
+      AND EXISTS (
+        SELECT 1 FROM verificacion_negocio v
+        WHERE v.id_negocio = n.id AND v.estado = 'APROBADO'
+      )
+      AND EXISTS (
+        SELECT 1 FROM usuarios_negocio u
+        WHERE u.id_negocio = n.id AND u.activo = TRUE AND u.correo_verificado = TRUE
+      )
 
       GROUP BY n.id
 
@@ -417,6 +546,15 @@ app.get(
             FROM configuracion_negocio
             WHERE id = $1
               AND activo_directorio = TRUE
+              AND EXISTS (
+                SELECT 1 FROM verificacion_negocio v
+                WHERE v.id_negocio = configuracion_negocio.id AND v.estado = 'APROBADO'
+              )
+              AND EXISTS (
+                SELECT 1 FROM usuarios_negocio u
+                WHERE u.id_negocio = configuracion_negocio.id
+                  AND u.activo = TRUE AND u.correo_verificado = TRUE
+              )
             LIMIT 1
           `,
           [negocioId]
@@ -760,6 +898,15 @@ app.post('/api/solicitudes-cita', async (req, res) => {
 
           WHERE id = $1
             AND activo_directorio = TRUE
+            AND EXISTS (
+              SELECT 1 FROM verificacion_negocio v
+              WHERE v.id_negocio = configuracion_negocio.id AND v.estado = 'APROBADO'
+            )
+            AND EXISTS (
+              SELECT 1 FROM usuarios_negocio u
+              WHERE u.id_negocio = configuracion_negocio.id
+                AND u.activo = TRUE AND u.correo_verificado = TRUE
+            )
 
           LIMIT 1
         `,
@@ -1318,11 +1465,31 @@ app.post(
         });
       }
 
-      if (password.length < 10) {
+      if (
+        typeof correo !== "string" ||
+        correo.trim().length > 150 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())
+      ) {
         return res.status(400).json({
           success: false,
-          message:
-            "La contraseña debe tener al menos 10 caracteres.",
+          message: "Escribe un correo válido de hasta 150 caracteres.",
+        });
+      }
+
+      if (
+        typeof password !== "string" ||
+        [...password].length < 15
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "La contraseña debe tener al menos 15 caracteres.",
+        });
+      }
+
+      if (Buffer.byteLength(password, "utf8") > 72) {
+        return res.status(400).json({
+          success: false,
+          message: "La contraseña es demasiado larga. Usa una más corta.",
         });
       }
 
@@ -1360,7 +1527,7 @@ app.post(
         WHERE LOWER(correo) = LOWER($1)
         LIMIT 1
         `,
-        [correo]
+        [correo.trim()]
       );
 
       if (usuarioExistente.rowCount > 0) {
@@ -1514,9 +1681,8 @@ app.post(
 
       try {
         await crearYEnviarCodigoVerificacion(
-          usuarioResult.rows[0].id,
           correo.trim().toLowerCase(),
-          nombreEstablecimiento.trim()
+          client
         );
       } catch (emailError) {
         correoEnviado = false;
@@ -1562,6 +1728,17 @@ app.post(
           .catch(() => {});
       }
 
+      if (
+        error.code === "23505" &&
+        error.constraint === "idx_usuarios_negocio_correo"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Ya existe una cuenta registrada con ese correo.",
+        });
+      }
+
       console.error(
         "❌ Error en registro de negocio:",
         error.message
@@ -1578,308 +1755,46 @@ app.post(
   }
 );
 
-app.post("/api/enviar-codigo-verificacion", async (req, res) => {
-  const client = await pool.connect();
-
-  try {
-    const { correo } = req.body;
-
-    if (!correo) {
-      return res.status(400).json({
-        success: false,
-        message: "Debes indicar el correo.",
-      });
+const crearYEnviarCodigoVerificacion =
+  require("./routes/verificacionCorreo")(
+    app,
+    {
+      pool,
+      bcrypt,
+      crypto,
+      emailTransporter,
     }
-
-    const usuarioResult = await client.query(
-      `
-      SELECT
-        u.id,
-        u.correo,
-        u.correo_verificado,
-        n.nombre_establecimiento
-      FROM usuarios_negocio u
-      INNER JOIN configuracion_negocio n
-        ON n.id = u.id_negocio
-      WHERE LOWER(u.correo) = LOWER($1)
-      LIMIT 1
-      `,
-      [correo.trim()]
-    );
-
-    if (usuarioResult.rowCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No existe una cuenta con ese correo.",
-      });
-    }
-
-    const usuario = usuarioResult.rows[0];
-
-    if (usuario.correo_verificado) {
-      return res.status(400).json({
-        success: false,
-        message: "Este correo ya fue verificado.",
-      });
-    }
-
-    await crearYEnviarCodigoVerificacion(
-      usuario.id,
-      usuario.correo,
-      usuario.nombre_establecimiento
-    );
-
-    return res.json({
-      success: true,
-      message:
-        "Se envió un código de verificación al correo registrado.",
-    });
-  } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-
-    console.error(
-      "❌ Error enviando código:",
-      error.message
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "No fue posible enviar el código de verificación.",
-    });
-  } finally {
-    client.release();
-  }
-});
-
-app.post("/api/verificar-correo", async (req, res) => {
-  const client = await pool.connect();
-
-  try {
-    const { correo, codigo } = req.body;
-
-    if (!correo || !codigo) {
-      return res.status(400).json({
-        success: false,
-        message: "Correo y código son obligatorios.",
-      });
-    }
-
-    if (!/^\d{6}$/.test(String(codigo))) {
-      return res.status(400).json({
-        success: false,
-        message: "El código debe contener 6 dígitos.",
-      });
-    }
-
-    const usuarioResult = await client.query(
-      `
-      SELECT id, correo_verificado
-      FROM usuarios_negocio
-      WHERE LOWER(correo) = LOWER($1)
-      LIMIT 1
-      `,
-      [correo.trim()]
-    );
-
-    if (usuarioResult.rowCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No existe una cuenta con ese correo.",
-      });
-    }
-
-    const usuario = usuarioResult.rows[0];
-
-    if (usuario.correo_verificado) {
-      return res.json({
-        success: true,
-        message: "El correo ya se encuentra verificado.",
-      });
-    }
-
-    const tokenResult = await client.query(
-      `
-      SELECT *
-      FROM tokens_seguridad
-      WHERE id_usuario = $1
-        AND tipo = 'VERIFICAR_CORREO'
-        AND usado = FALSE
-      ORDER BY fecha_creacion DESC
-      LIMIT 1
-      `,
-      [usuario.id]
-    );
-
-    if (tokenResult.rowCount === 0) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "No existe un código de verificación vigente.",
-      });
-    }
-
-    const token = tokenResult.rows[0];
-
-    if (new Date(token.fecha_expiracion) < new Date()) {
-      await client.query(
-        `
-        UPDATE tokens_seguridad
-        SET usado = TRUE
-        WHERE id = $1
-        `,
-        [token.id]
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "El código ha expirado. Solicita uno nuevo.",
-      });
-    }
-
-    if (token.intentos >= 5) {
-      return res.status(429).json({
-        success: false,
-        message:
-          "Se alcanzó el límite de intentos. Solicita un nuevo código.",
-      });
-    }
-
-    const codigoCorrecto = await bcrypt.compare(
-      String(codigo),
-      token.codigo_hash
-    );
-
-    if (!codigoCorrecto) {
-      await client.query(
-        `
-        UPDATE tokens_seguridad
-        SET intentos = intentos + 1
-        WHERE id = $1
-        `,
-        [token.id]
-      );
-
-      return res.status(400).json({
-        success: false,
-        message: "El código no es correcto.",
-      });
-    }
-
-    await client.query("BEGIN");
-
-    await client.query(
-      `
-      UPDATE usuarios_negocio
-      SET correo_verificado = TRUE
-      WHERE id = $1
-      `,
-      [usuario.id]
-    );
-
-    await client.query(
-      `
-      UPDATE tokens_seguridad
-      SET usado = TRUE
-      WHERE id = $1
-      `,
-      [token.id]
-    );
-
-    await client.query("COMMIT");
-
-    return res.json({
-      success: true,
-      message: "Correo verificado correctamente.",
-    });
-  } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-
-    console.error(
-      "❌ Error verificando correo:",
-      error.message
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "No fue posible verificar el correo.",
-    });
-  } finally {
-    client.release();
-  }
-});
-
-async function crearYEnviarCodigoVerificacion(
-  idUsuario,
-  correo,
-  nombreEstablecimiento
-) {
-  const codigo = crypto
-    .randomInt(100000, 1000000)
-    .toString();
-
-  const codigoHash = await bcrypt.hash(codigo, 10);
-
-  await pool.query(
-    `
-    UPDATE tokens_seguridad
-    SET usado = TRUE
-    WHERE id_usuario = $1
-      AND tipo = 'VERIFICAR_CORREO'
-      AND usado = FALSE
-    `,
-    [idUsuario]
   );
 
-  await pool.query(
-    `
-    INSERT INTO tokens_seguridad (
-      id_usuario,
-      tipo,
-      codigo_hash,
-      fecha_expiracion,
-      usado,
-      intentos
-    )
-    VALUES (
-      $1,
-      'VERIFICAR_CORREO',
-      $2,
-      CURRENT_TIMESTAMP + INTERVAL '10 minutes',
-      FALSE,
-      0
-    )
-    `,
-    [idUsuario, codigoHash]
-  );
-
-  await emailTransporter.sendMail({
-    from: `"VetStec" <${process.env.EMAIL_USER}>`,
-    to: correo,
-    subject: "Verifica tu correo - VetStec",
-    text: `
-Hola.
-
-Gracias por registrar ${nombreEstablecimiento} en VetStec.
-
-Tu código de verificación es:
-
-${codigo}
-
-El código estará disponible durante 10 minutos.
-
-Si tú no realizaste este registro, puedes ignorar este mensaje.
-
-Equipo VetStec
-    `,
+const { requireSesion, requireNegocioAprobado } =
+  require('./routes/autenticacion')(app, {
+    pool,
+    bcrypt,
+    crypto,
+    allowedOrigins,
   });
-}
+
+const { requirePropietario, requireSucursal } =
+  require('./routes/propietario')(app, {
+    pool,
+    requireSesion,
+  });
+
+require('./routes/productosPrivados')(app, {
+  pool,
+  requireSesion,
+  requirePropietario,
+  requireSucursal,
+});;
+
+  require('./routes/autenticacionAdmin')(app, {
+  pool,
+  bcrypt,
+  crypto,
+  allowedOrigins,
+});
+
+  require('./routes/solicitudesAdmin')(app, { pool, supabase });
 
 /* =========================================================
    404 PARA RUTAS API INEXISTENTES

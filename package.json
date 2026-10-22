@@ -5,8 +5,24 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon server.js",
-    "start": "node server.js"
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "inspect:db": "node scripts/diagnostico/inspect-db.js",
+    "inspect:checks": "node scripts/diagnostico/inspect-checks.js",
+    "inspect:relations": "node scripts/diagnostico/inspect-relations.js",
+    "inspect:registro": "node scripts/diagnostico/inspect-registro.js",
+    "inspect:citas": "node scripts/diagnostico/inspect-requests.js",
+    "inspect:contacto": "node scripts/diagnostico/inspect-contact.js",
+    "migrate:public": "node scripts/migraciones/migrate-public.js",
+    "migrate:auth": "node scripts/migraciones/migrate-auth.js",
+    "seed:public": "node scripts/datos-prueba/seed-public-test.js",
+    "test:cp": "node scripts/pruebas/probar-cp.js",
+    "test:email": "node scripts/pruebas/test-email.js",
+    "test:storage": "node scripts/pruebas/test-storage.js",
+    "migrate:sesiones": "node scripts/migraciones/migrate-sesiones.js",
+    "migrate:admin": "node scripts/migraciones/migrate-admin.js",
+    "admin:crear": "node scripts/administracion/crear-admin.js",
+    "migrate:revisiones": "node scripts/migraciones/migrate-revisiones.js"
   },
   "keywords": [],
   "author": "",
@@ -25,8 +41,5 @@
     "swagger-ui-express": "^5.0.1",
     "ws": "^8.22.0",
     "yaml": "^2.9.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.14"
   }
 }

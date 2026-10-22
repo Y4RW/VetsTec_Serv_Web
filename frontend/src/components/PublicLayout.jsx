@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const navItems = [
   { to: '/', label: 'Inicio', end: true },
@@ -9,6 +10,10 @@ const navItems = [
 
 export default function PublicLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { estado } = useAuth();
+  const enlaces = [...navItems, estado === 'autenticado'
+    ? { to: '/panel', label: 'Mi panel' }
+    : { to: '/acceso', label: 'Iniciar sesión' }];
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -21,8 +26,7 @@ export default function PublicLayout() {
       <header className="public-header">
         <div className="container header-inner">
           <NavLink className="brand" to="/" onClick={closeMenu} aria-label="VetStec, ir al inicio">
-            <span className="brand-symbol" aria-hidden="true">V</span>
-            <span className="brand-name">Vet<span>Stec</span></span>
+            <img className="brand-logo" src="/Logo_VetStec.png" alt="VetStec" width="100" height="100" />
           </NavLink>
 
           <button
@@ -41,7 +45,7 @@ export default function PublicLayout() {
             className={`public-nav ${menuOpen ? 'is-open' : ''}`}
             aria-label="Navegación principal"
           >
-            {navItems.map((item) => (
+            {enlaces.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
