@@ -1,7 +1,13 @@
 module.exports = function registrarPropietario(app, { pool, requireSesion }) {
   const error = (res, status, message) => res.status(status).json({ success: false, message });
   const fallo = (res, e) => {
-    console.error('Permisos propietario:', e.code || 'ERROR');
+    console.error('Permisos propietario:', {
+      codigo: e?.code || 'ERROR',
+      mensaje: e?.message || 'Sin mensaje disponible',
+      tabla: e?.table || null,
+      columna: e?.column || null,
+    });
+
     return error(res, 503, 'No pudimos verificar tus permisos. Intenta nuevamente.');
   };
   function idValido(valor) {

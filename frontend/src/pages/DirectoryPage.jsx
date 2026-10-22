@@ -88,8 +88,7 @@ export default function DirectoryPage() {
     setSelectedEstablishment,
   ] = useState(null);
 
-  const [availability, setAvailability] = 
-    useState([]);
+  const [availability, setAvailability] = useState([]);
 
   const [availabilityLoading, setAvailabilityLoading] =
     useState(false);
