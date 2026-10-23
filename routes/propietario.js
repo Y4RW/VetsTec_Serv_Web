@@ -1,4 +1,6 @@
-module.exports = function registrarPropietario(app, { pool, requireSesion }) {
+module.exports = function registrarPropietario(app, {
+  pool, requireSesion, requireSesionConArchivos, supabase, subirArchivoASupabase,
+}) {
   const error = (res, status, message) => res.status(status).json({ success: false, message });
   const fallo = (res, e) => {
     console.error('Permisos propietario:', {
@@ -59,11 +61,21 @@ module.exports = function registrarPropietario(app, { pool, requireSesion }) {
     } catch (e) { return fallo(res, e); }
   }
 
+    require('./sucursalesPropietario')(app, {
+    pool, requireSesionConArchivos, requirePropietario, supabase, subirArchivoASupabase,
+  });
+
+  require('./edicionSucursales')(app, {
+    pool, requireSesion, requireSesionConArchivos, requirePropietario, supabase, subirArchivoASupabase,
+  });
+
   app.use('/api/propietario', requireSesion, requirePropietario);
   app.get('/api/propietario/resumen', async (req, res) => {
     try {
       const { rows } = await pool.query(`
         SELECT n.id, n.nombre_establecimiento, n.tipo_servicio, n.activo_directorio,
+          n.telefono_whatsapp, n.correo_contacto, n.descripcion, n.direccion,
+          n.codigo_postal, n.latitud, n.longitud, v.motivo_rechazo,
           COALESCE(v.estado,'PENDIENTE') AS estado, s.es_principal,
           (SELECT COUNT(*)::int FROM public.empleados e WHERE e.id_negocio=n.id) AS empleados,
           (SELECT COUNT(*)::int FROM public.servicios sv WHERE sv.id_negocio=n.id) AS servicios,
@@ -97,7 +109,7 @@ module.exports = function registrarPropietario(app, { pool, requireSesion }) {
       return res.json({ success: true, data: rows });
     } catch (e) { return fallo(res, e); }
   });
-  // Aún no hay edición de sucursales/productos: no se habilitan escrituras implícitas.
+
   app.use('/api/propietario', (req, res) => {
     const lectura = ['GET', 'HEAD'].includes(req.method);
     if (!lectura) res.set('Allow', 'GET, HEAD');

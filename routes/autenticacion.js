@@ -219,6 +219,16 @@ module.exports = function registrarAutenticacion(
     return comprobarSesion(req, res, next);
   }
 
+  function requireSesionConArchivos(req, res, next) {
+    res.set('Cache-Control', 'no-store');
+    if (!['POST', 'PATCH'].includes(req.method) || !allowedOrigins.includes(req.get('Origin')) ||
+        req.get('X-Requested-With') !== 'VetStec' || !req.is('multipart/form-data')) {
+      return res.status(403).json({ success: false,
+        message: 'Solicitud no permitida. Vuelve a intentarlo desde VetStec.' });
+    }
+    return comprobarSesion(req, res, next);
+  }
+
   function requireNegocioAprobado(req, res, next) {
     if (req.auth?.negocio.estado !== 'APROBADO') {
       return res.status(403).json({
@@ -246,5 +256,5 @@ module.exports = function registrarAutenticacion(
     }
   });
 
-  return { requireSesion, requireNegocioAprobado };
+    return { requireSesion, requireSesionConArchivos, requireNegocioAprobado };
 };

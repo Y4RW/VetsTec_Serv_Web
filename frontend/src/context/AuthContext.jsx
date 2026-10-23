@@ -15,7 +15,9 @@ export function AuthProvider({ children }) {
 
   const comprobarSesion = useCallback(async () => {
     const actual = ++revision.current;
-    setAcceso((anterior) => ({ ...anterior, estado: 'cargando', error: '' }));
+    setAcceso((anterior) => ({ ...anterior,
+      estado: anterior.estado === 'autenticado' ? 'autenticado' : 'cargando', error: '',
+    }));
     try {
       const sesion = await authApi('sesion');
       if (actual === revision.current) {
