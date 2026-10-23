@@ -193,7 +193,7 @@ export default function MapPicker({
             className="btn btn-primary"
             disabled={!seleccionado}
             onClick={() => {
-              const punto = marker.current.getLatLng();
+             const punto = marker.current.getLatLng().wrap();;
 
               onConfirm({
                 latitud: punto.lat.toFixed(6),
