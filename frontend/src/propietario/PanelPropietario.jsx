@@ -1,13 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import FormularioSucursal from './FormularioSucursal';
+import EditarSucursal from './EditarSucursal';
 import './propietario.css';
 
-async function pedir(ruta) {
+async function pedir(ruta, signal) {
   const respuesta = await fetch(`/api/propietario/${ruta}`, {
-    credentials: 'same-origin', cache: 'no-store',
+    credentials: 'same-origin', cache: 'no-store', signal,
   });
+  signal.throwIfAborted();
+  if (respuesta.status === 401) {
+    window.dispatchEvent(new Event('vetstec:sesion-vencida'));
+  }
   const json = await respuesta.json().catch(() => null);
+  signal.throwIfAborted();
   if (!respuesta.ok || json?.success !== true) {
     throw new Error(json?.message || 'No fue posible consultar la información.');
   }
@@ -19,7 +26,7 @@ const nombres = {
 };
 
 export default function PanelPropietario() {
-  const { sesion } = useAuth();
+  const { sesion, comprobarSesion } = useAuth();
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -28,23 +35,52 @@ export default function PanelPropietario() {
   const [cargandoProductos, setCargandoProductos] = useState(false);
   const [errorProductos, setErrorProductos] = useState('');
 
-  const cargar = useCallback(async () => {
+    const [formulario, setFormulario] = useState(false);
+    const [edicion, setEdicion] = useState(null);
+    const [guardando, setGuardando] = useState(false);
+    const [aviso, setAviso] = useState('');
+    const solicitudes = useRef({ resumen: null, productos: null });
+
+  const limpiarProductos = useCallback(() => {
+    solicitudes.current.productos?.abort();
+    solicitudes.current.productos = null;
+    setProductos(null);
+    setErrorProductos('');
+    setCargandoProductos(false);
+  }, []);
+
+  const cargar = useCallback(async (idPreferido = null) => {
+    solicitudes.current.resumen?.abort();
+    const controller = new AbortController();
+    solicitudes.current.resumen = controller;
+    limpiarProductos();
     setCargando(true);
     setError('');
     try {
-      const respuesta = await pedir('resumen');
+            const respuesta = await pedir('resumen', controller.signal);
+      if (solicitudes.current.resumen !== controller) return;
       setDatos(respuesta);
-      setSeleccion(anterior => respuesta.sucursales.some(s => s.id === anterior)
-        ? anterior : (respuesta.sucursales[0]?.id || null));
+      setSeleccion(anterior => {
+        const preferida = idPreferido ?? anterior;
+        return respuesta.sucursales.some(s => s.id === preferida)
+          ? preferida : (respuesta.sucursales[0]?.id || null);
+      });
     } catch (fallo) {
+      if (controller.signal.aborted || solicitudes.current.resumen !== controller) return;
       setDatos(null);
       setError(fallo.message);
     } finally {
-      setCargando(false);
+      if (!controller.signal.aborted && solicitudes.current.resumen === controller) setCargando(false);
     }
-  }, [sesion?.usuario?.id]);
+  }, [sesion?.usuario?.id, limpiarProductos]);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    cargar();
+    return () => {
+      solicitudes.current.resumen?.abort();
+      solicitudes.current.productos?.abort();
+    };
+  }, [cargar]);
 
   const sucursal = datos?.sucursales?.find(s => s.id === seleccion);
   const total = campo => (datos?.sucursales || []).reduce(
@@ -53,16 +89,35 @@ export default function PanelPropietario() {
 
   async function mostrarProductos() {
     if (!sucursal || sucursal.estado !== 'APROBADO') return;
-    setErrorProductos('');
-    setProductos(null);
+        limpiarProductos();
+    const controller = new AbortController();
+    solicitudes.current.productos = controller;
     setCargandoProductos(true);
     try {
-      setProductos(await pedir(`sucursales/${sucursal.id}/productos`));
+      const lista = await pedir(`sucursales/${sucursal.id}/productos`, controller.signal);
+      if (solicitudes.current.productos === controller) setProductos(lista);
     } catch (fallo) {
-      setErrorProductos(fallo.message);
+      if (!controller.signal.aborted && solicitudes.current.productos === controller) setErrorProductos(fallo.message);
     } finally {
-      setCargandoProductos(false);
+      if (!controller.signal.aborted && solicitudes.current.productos === controller) setCargandoProductos(false);
     }
+  }
+
+  function guardada(actualizada) {
+    setGuardando(false);
+    setEdicion(null);
+    setAviso(actualizada.sin_cambios ? 'No había cambios por guardar.' : actualizada.requiere_revision
+      ? `Los cambios de “${actualizada.nombre_establecimiento}” se guardaron. La sucursal está pendiente de revisión y no es visible en el directorio.`
+      : `Se guardaron los cambios de “${actualizada.nombre_establecimiento}”.`);
+    cargar(actualizada.id);
+    if (sesion?.negocio?.id === actualizada.id) comprobarSesion();
+  }
+
+  function creada(nueva) {
+    setGuardando(false);
+    setFormulario(false);
+    setAviso(`La sucursal “${nueva.nombre_establecimiento}” se registró y está pendiente de revisión.`);
+    cargar(nueva.id);
   }
 
   return (
@@ -73,12 +128,19 @@ export default function PanelPropietario() {
           <h2 id="owner-titulo">Mis sucursales</h2>
           <p>Vista general de los establecimientos que pertenecen a tu cuenta.</p>
         </div>
-        <button type="button" className="button button-secondary"
-          disabled={cargando} onClick={cargar}>
-          {cargando ? 'Actualizando…' : 'Actualizar datos'}
-        </button>
+        <div className="owner-actions">
+          <button type="button" className="button button-secondary"
+            disabled={cargando || formulario || guardando || edicion !== null} onClick={() => cargar()}>
+            {cargando ? 'Actualizando…' : 'Actualizar datos'}
+          </button>
+          {datos && !formulario && edicion === null && <button type="button" className="button button-primary"
+            disabled={cargando} onClick={() => { limpiarProductos(); setAviso(''); setFormulario(true); }}>
+            Agregar sucursal
+          </button>}
+        </div>
       </div>
 
+      {aviso && <p role="status" className="owner-success">{aviso}</p>}
       {error && <p role="alert" className="owner-error">
         {error} Puedes <Link to="/contacto">contactar a VetStec</Link> para revisar la propiedad.
       </p>}
@@ -102,13 +164,19 @@ export default function PanelPropietario() {
           </div>)}
         </div>
 
-        <div className="owner-main">
+        {edicion !== null ? (
+          <EditarSucursal key={edicion} idSucursal={edicion}
+            onCancelar={() => setEdicion(null)} onGuardada={guardada} onGuardando={setGuardando} />
+        ) : formulario ? (
+          <FormularioSucursal onCancelar={() => setFormulario(false)}
+            onCreada={creada} onGuardando={setGuardando} />
+        ) : <div className="owner-main">
           <div className="owner-branch-list" aria-label="Seleccionar sucursal">
             <h3>Establecimientos</h3>
             {datos.sucursales.map(s => <button key={s.id} type="button"
               aria-pressed={seleccion === s.id}
               className={`owner-branch ${seleccion === s.id ? 'selected' : ''}`}
-              onClick={() => { setSeleccion(s.id); setProductos(null); setErrorProductos(''); }}>
+              onClick={() => { limpiarProductos(); setSeleccion(s.id); }}>
               <span><strong>{s.nombre_establecimiento}</strong>
                 <small>{s.es_principal ? 'Sucursal principal' : 'Sucursal adicional'}</small></span>
               <span className="owner-state">{s.estado}</span>
@@ -122,10 +190,24 @@ export default function PanelPropietario() {
                 <div><dt>Identificador</dt><dd>{sucursal.id}</dd></div>
                 <div><dt>Revisión</dt><dd>{sucursal.estado}</dd></div>
                 <div><dt>Directorio público</dt><dd>{sucursal.activo_directorio ? 'Visible' : 'No visible'}</dd></div>
+                <div><dt>Teléfono / WhatsApp</dt><dd>{sucursal.telefono_whatsapp || 'Sin dato'}</dd></div>
+                <div><dt>Correo de contacto</dt><dd>{sucursal.correo_contacto || 'Sin dato'}</dd></div>
+                <div><dt>Dirección</dt><dd>{sucursal.direccion || 'Sin dato'}</dd></div>
+                <div><dt>Código postal</dt><dd>{sucursal.codigo_postal || 'Sin dato'}</dd></div>
+                <div><dt>Ubicación</dt><dd>{sucursal.latitud ?? '—'}, {sucursal.longitud ?? '—'}</dd></div>      
                 <div><dt>Productos</dt><dd>{sucursal.productos}</dd></div>
                 <div><dt>Proveedores</dt><dd>{sucursal.proveedores}</dd></div>
                 <div><dt>Citas</dt><dd>{sucursal.citas}</dd></div>
               </dl>
+              <p className="owner-description">{sucursal.descripcion || 'Sin descripción.'}</p>
+              {sucursal.motivo_rechazo && <p className="owner-error"><strong>Motivo del rechazo:</strong> {sucursal.motivo_rechazo}</p>}
+              <div className="owner-edit-actions">
+                <button type="button" className="button button-secondary"
+                  disabled={sucursal.estado === 'SUSPENDIDO'}
+                  onClick={() => { limpiarProductos(); setAviso(''); setEdicion(sucursal.id); }}>
+                  Editar datos de esta sucursal
+                </button>
+              </div>
               {sucursal.estado === 'APROBADO' ? <button
                 type="button" className="button button-primary" onClick={mostrarProductos}
                 disabled={cargandoProductos}>
@@ -146,10 +228,10 @@ export default function PanelPropietario() {
               </div>}
             </> : <p>Selecciona una sucursal para ver su información.</p>}
           </div>
-        </div>
-        <p className="owner-note">Para vincular una sucursal nueva debe comprobarse su titularidad
-          y conservarse la revisión de VetStec. No se agregan sucursales solo escribiendo un ID.</p>
-        <Link to="/contacto">Solicitar revisión para vincular otra sucursal</Link>
+        </div>}
+        <p className="owner-note">Cada nueva sucursal pasa por la revisión de VetStec.
+          Para vincular un establecimiento que ya está registrado, solicita la revisión de su titularidad.</p>
+        <Link to="/contacto">Solicitar vinculación de un establecimiento existente</Link>
       </>}
     </section>
   );

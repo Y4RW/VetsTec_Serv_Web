@@ -14,6 +14,7 @@ const fs = require("fs");
 const path = require("path");
 const YAML = require("yaml");
 const swaggerUi = require("swagger-ui-express");
+const { cuentaVerificadaSQL } = require('./lib/cuentasEstablecimiento');
 
 const registroUpload = multer({
   storage: multer.memoryStorage(),
@@ -394,10 +395,8 @@ app.get('/api/establecimientos', async (req, res) => {
         SELECT 1 FROM verificacion_negocio v
         WHERE v.id_negocio = n.id AND v.estado = 'APROBADO'
       )
-      AND EXISTS (
-        SELECT 1 FROM usuarios_negocio u
-        WHERE u.id_negocio = n.id AND u.activo = TRUE AND u.correo_verificado = TRUE
-      )
+      
+      AND ${cuentaVerificadaSQL('n.id')}
 
       GROUP BY n.id
 
@@ -550,11 +549,7 @@ app.get(
                 SELECT 1 FROM verificacion_negocio v
                 WHERE v.id_negocio = configuracion_negocio.id AND v.estado = 'APROBADO'
               )
-              AND EXISTS (
-                SELECT 1 FROM usuarios_negocio u
-                WHERE u.id_negocio = configuracion_negocio.id
-                  AND u.activo = TRUE AND u.correo_verificado = TRUE
-              )
+              AND ${cuentaVerificadaSQL('configuracion_negocio.id')}
             LIMIT 1
           `,
           [negocioId]
@@ -902,11 +897,7 @@ app.post('/api/solicitudes-cita', async (req, res) => {
               SELECT 1 FROM verificacion_negocio v
               WHERE v.id_negocio = configuracion_negocio.id AND v.estado = 'APROBADO'
             )
-            AND EXISTS (
-              SELECT 1 FROM usuarios_negocio u
-              WHERE u.id_negocio = configuracion_negocio.id
-                AND u.activo = TRUE AND u.correo_verificado = TRUE
-            )
+            AND ${cuentaVerificadaSQL('configuracion_negocio.id')}
 
           LIMIT 1
         `,
@@ -1766,7 +1757,7 @@ const crearYEnviarCodigoVerificacion =
     }
   );
 
-const { requireSesion, requireNegocioAprobado } =
+const { requireSesion, requireSesionConArchivos, requireNegocioAprobado } =
   require('./routes/autenticacion')(app, {
     pool,
     bcrypt,
@@ -1775,9 +1766,12 @@ const { requireSesion, requireNegocioAprobado } =
   });
 
 const { requirePropietario, requireSucursal } =
-  require('./routes/propietario')(app, {
+    require('./routes/propietario')(app, {
     pool,
     requireSesion,
+    requireSesionConArchivos,
+    supabase,
+    subirArchivoASupabase,
   });
 
 require('./routes/productosPrivados')(app, {

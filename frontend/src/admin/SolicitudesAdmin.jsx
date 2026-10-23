@@ -63,6 +63,7 @@ function Detalle({ id, solicitar, alDecidir, volver }) {
     try {
       const resultado = await solicitar(`/${id}/decision`, { method: 'POST', datos: {
         decision: accion, motivo, observaciones, revisionConfirmada: confirmada,
+        versionRevision: datos.version_revision,
       } });
       setAviso(resultado.estado === 'APROBADO' ? 'Aprobación guardada. El establecimiento ya puede aparecer en el directorio.' : 'Rechazo guardado. El motivo está disponible en el panel del establecimiento.');
       setAccion(''); setMotivo(''); setObservaciones('');

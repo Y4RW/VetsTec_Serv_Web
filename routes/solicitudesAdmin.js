@@ -1,9 +1,10 @@
+const { cuentaDeNegocioSQL, cuentaVerificadaSQL } = require('../lib/cuentasEstablecimiento');
+
 module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
   const base = '/api/admin/solicitudes';
   const fallo = (status, message) => Object.assign(new Error(message), { status });
   const idValido = (valor) => /^[1-9]\d*$/.test(valor || '') && Number(valor) <= 2147483647;
-  const verificadoSQL = `EXISTS (SELECT 1 FROM usuarios_negocio u
-    WHERE u.id_negocio = n.id AND u.activo = TRUE AND u.correo_verificado = TRUE)`;
+  const verificadoSQL = cuentaVerificadaSQL('n.id');
 
   // autenticacionAdmin debe registrarse antes. Esta comprobación adicional falla
   // de forma cerrada si el módulo se instala accidentalmente en otro orden.
@@ -69,11 +70,12 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
           n.latitud, n.longitud, n.activo_directorio, v.estado, v.nombre_responsable,
           v.cedula_profesional, v.motivo_rechazo, v.observaciones_revision,
           v.fecha_solicitud, v.fecha_revision,
+          n.xmin::text || ':' || v.xmin::text AS version_revision,
           (v.foto_establecimiento_url IS NOT NULL) AS tiene_evidencia,
           ${verificadoSQL} AS correo_verificado,
           COALESCE((SELECT json_agg(json_build_object('correo', u.correo,
             'correo_verificado', u.correo_verificado, 'activo', u.activo) ORDER BY u.id)
-            FROM usuarios_negocio u WHERE u.id_negocio = n.id), '[]'::json) AS cuentas,
+          FROM usuarios_negocio u WHERE ${cuentaDeNegocioSQL('n.id')}), '[]'::json) AS cuentas,
           COALESCE((SELECT json_agg(json_build_object('id', h.id,
             'administrador', h.administrador_nombre, 'estado_anterior', h.estado_anterior,
             'estado_nuevo', h.estado_nuevo, 'motivo', h.motivo,
@@ -112,28 +114,39 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
     let client;
     try {
       if (!idValido(req.params.id)) throw fallo(400, 'Identificador no válido.');
-      const { decision, motivo = '', observaciones = '', revisionConfirmada } = req.body || {};
+      const { decision, motivo = '', observaciones = '', revisionConfirmada, versionRevision } = req.body || {};
       if (!['APROBADO', 'RECHAZADO'].includes(decision) || typeof motivo !== 'string' ||
           typeof observaciones !== 'string' || motivo.length > 2000 || observaciones.length > 2000) {
         throw fallo(400, 'Selecciona una decisión y utiliza textos de hasta 2000 caracteres.');
       }
       if (decision === 'RECHAZADO' && motivo.trim().length < 10) throw fallo(400, 'Escribe un motivo de rechazo de al menos 10 caracteres.');
       if (decision === 'APROBADO' && revisionConfirmada !== true) throw fallo(400, 'Confirma que revisaste los datos y los requisitos del establecimiento.');
+      if (typeof versionRevision !== 'string' || !/^\d{1,10}:\d{1,10}$/.test(versionRevision)) {
+        throw fallo(409, 'Actualiza el detalle y revisa los datos antes de decidir.');
+      }
       const id = Number(req.params.id);
       client = await pool.connect();
       await client.query('BEGIN');
       const resultado = await client.query(`
         SELECT n.id, n.tipo_servicio, v.estado, v.nombre_responsable,
-          v.cedula_profesional, v.foto_establecimiento_url
+        v.cedula_profesional, v.foto_establecimiento_url,
+        n.xmin::text || ':' || v.xmin::text AS version_revision
         FROM verificacion_negocio v JOIN configuracion_negocio n ON n.id = v.id_negocio
         WHERE n.id = $1 FOR UPDATE OF v, n
       `, [id]);
       const solicitud = resultado.rows[0];
       if (!solicitud) throw fallo(404, 'Solicitud no encontrada.');
       if (solicitud.estado !== 'PENDIENTE') throw fallo(409, 'Esta solicitud ya fue revisada. Actualiza el detalle para ver la decisión.');
+      if (solicitud.version_revision !== versionRevision) {
+        throw fallo(409, 'El propietario modificó los datos o hubo otra revisión. Actualiza el detalle antes de decidir.');
+      }
       if (decision === 'APROBADO') {
-        const usuarios = await client.query(`SELECT id, activo, correo_verificado
-          FROM usuarios_negocio WHERE id_negocio = $1 ORDER BY id FOR UPDATE`, [id]);
+        await client.query(`SELECT p.id_red FROM public.redes_propietarios p
+          JOIN public.redes_sucursales s ON s.id_red = p.id_red
+          WHERE s.id_negocio = $1 FOR UPDATE OF p`, [id]);
+        const usuarios = await client.query(`SELECT u.id, u.activo, u.correo_verificado
+          FROM public.usuarios_negocio u WHERE ${cuentaDeNegocioSQL('$1')}
+          ORDER BY u.id FOR UPDATE OF u`, [id]);
         if (!usuarios.rows.some(u => u.activo && u.correo_verificado)) {
           throw fallo(409, 'El establecimiento debe verificar su correo antes de aprobarlo.');
         }
