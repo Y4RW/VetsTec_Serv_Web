@@ -110,6 +110,11 @@ module.exports = function registrarPropietario(app, {
     } catch (e) { return fallo(res, e); }
   });
 
+  require('./catalogoProductos')(app, {
+    pool,
+    requireSucursal,
+  });
+
   app.use('/api/propietario', (req, res) => {
     const lectura = ['GET', 'HEAD'].includes(req.method);
     if (!lectura) res.set('Allow', 'GET, HEAD');

@@ -206,22 +206,26 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
       if (montado.current) {
         onGuardada(json.data);
       }
-      if (montado.current) onGuardada(json.data);
     } catch (fallo) {
-    if (montado.current && !controller.signal.aborted) {
-      setGuardadoIncierto(!respuestaDefinitiva);
-  
-      setError(
-        !respuestaDefinitiva
-          ? 'No pudimos confirmar si los cambios se guardaron. Carga los datos actuales antes de volver a guardar.'
-          : fallo.message
-      );
-    }
-  } finally {
-        enviando.current = false;
-        if (montado.current) { setGuardando(false); onGuardando(false); }
+      if (montado.current && !controller.signal.aborted) {
+        setGuardadoIncierto(!respuestaDefinitiva);
+
+        setError(
+          !respuestaDefinitiva
+            ? 'No pudimos confirmar si los cambios se guardaron. Carga los datos actuales antes de volver a guardar.'
+            : fallo.message
+        );
+      }
+    } finally {
+      enviando.current = false;
+
+      if (montado.current) {
+        setGuardando(false);
+        onGuardando(false);
       }
     }
+  }
+  
   return <section className="owner-create owner-edit" aria-labelledby="sucursal-editar-titulo">
     <div className="owner-create-heading">
       <div>
@@ -261,7 +265,10 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
           : 'Cambiar teléfono, correo de contacto o descripción conserva el estado de revisión. Cambiar nombre, dirección, mapa, tipo o requisitos necesita una nueva revisión.'}
       </p>
       {actual.motivo_rechazo && <p className="owner-error"><strong>Motivo del rechazo:</strong> {actual.motivo_rechazo}</p>}
-      <fieldset className="owner-edit-fields" disabled={guardando || suspendida || conflicto}>
+      <fieldset
+        className="owner-edit-fields"
+        disabled={guardando || suspendida || requiereRecarga}
+      >
         <legend className="owner-edit-legend">Datos de la sucursal</legend>
         <div className="register-form-grid">
           <label className="form-field form-field-full"><span>Nombre de la sucursal *</span>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import FormularioSucursal from './FormularioSucursal';
 import EditarSucursal from './EditarSucursal';
+import ProductosSucursal from './ProductosSucursal';
 import './propietario.css';
 
 async function pedir(ruta, signal) {
@@ -31,22 +32,16 @@ export default function PanelPropietario() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [seleccion, setSeleccion] = useState(null);
-  const [productos, setProductos] = useState(null);
-  const [cargandoProductos, setCargandoProductos] = useState(false);
-  const [errorProductos, setErrorProductos] = useState('');
+  const [productos, setProductos] = useState(false);
 
     const [formulario, setFormulario] = useState(false);
     const [edicion, setEdicion] = useState(null);
     const [guardando, setGuardando] = useState(false);
     const [aviso, setAviso] = useState('');
-    const solicitudes = useRef({ resumen: null, productos: null });
+    const solicitudes = useRef({ resumen: null });
 
   const limpiarProductos = useCallback(() => {
-    solicitudes.current.productos?.abort();
-    solicitudes.current.productos = null;
-    setProductos(null);
-    setErrorProductos('');
-    setCargandoProductos(false);
+    setProductos(false);
   }, []);
 
   const cargar = useCallback(async (idPreferido = null) => {
@@ -78,30 +73,21 @@ export default function PanelPropietario() {
     cargar();
     return () => {
       solicitudes.current.resumen?.abort();
-      solicitudes.current.productos?.abort();
     };
   }, [cargar]);
 
   const sucursal = datos?.sucursales?.find(s => s.id === seleccion);
-  const total = campo => (datos?.sucursales || []).reduce(
-    (suma, item) => suma + Number(item[campo] || 0), 0,
-  );
 
-  async function mostrarProductos() {
-    if (!sucursal || sucursal.estado !== 'APROBADO') return;
-        limpiarProductos();
-    const controller = new AbortController();
-    solicitudes.current.productos = controller;
-    setCargandoProductos(true);
-    try {
-      const lista = await pedir(`sucursales/${sucursal.id}/productos`, controller.signal);
-      if (solicitudes.current.productos === controller) setProductos(lista);
-    } catch (fallo) {
-      if (!controller.signal.aborted && solicitudes.current.productos === controller) setErrorProductos(fallo.message);
-    } finally {
-      if (!controller.signal.aborted && solicitudes.current.productos === controller) setCargandoProductos(false);
-    }
-  }
+  const actualizarTotalProductos = useCallback((idSucursal, cantidad) => {
+    setDatos(anterior => anterior ? {
+      ...anterior,
+      sucursales: anterior.sucursales.map(s =>
+        s.id === idSucursal
+          ? { ...s, productos: cantidad }
+          : s
+      ),
+    } : anterior);
+  }, []);
 
   function guardada(actualizada) {
     setGuardando(false);
@@ -134,7 +120,7 @@ export default function PanelPropietario() {
             {cargando ? 'Actualizando…' : 'Actualizar datos'}
           </button>
           {datos && !formulario && edicion === null && <button type="button" className="button button-primary"
-            disabled={cargando} onClick={() => { limpiarProductos(); setAviso(''); setFormulario(true); }}>
+            disabled={cargando || guardando} onClick={() => { limpiarProductos(); setAviso(''); setFormulario(true); }}>
             Agregar sucursal
           </button>}
         </div>
@@ -151,18 +137,40 @@ export default function PanelPropietario() {
           <strong>Grupo: {datos.red.nombre}</strong>
           <span>{datos.sucursales.length} sucursal(es) vinculada(s)</span>
         </div>
-        <div className="owner-kpis" aria-label="Resumen de todas las sucursales">
-          {[
-            ['Sucursales', datos.sucursales.length],
-            ['Empleados', total('empleados')],
-            ['Servicios', total('servicios')],
-            ['Productos', total('productos')],
-            ['Citas registradas', total('citas')],
-            ['Ventas registradas', total('ventas')],
-          ].map(([nombre, valor]) => <div className="owner-kpi" key={nombre}>
-            <span>{nombre}</span><strong>{valor}</strong>
-          </div>)}
-        </div>
+
+        {!formulario && edicion === null && sucursal && (
+          <section aria-labelledby="owner-resumen-sucursal">
+            <h3 id="owner-resumen-sucursal">
+              Resumen de la sucursal: {sucursal.nombre_establecimiento}
+            </h3>
+
+            <p className="owner-note">
+              Estos contadores corresponden únicamente a la sucursal
+              seleccionada, con identificador {sucursal.id}.
+              Productos indica registros de productos, no unidades en existencia.
+              Citas y ventas muestran todos los registros, sin filtro de fecha.
+            </p>
+
+            <div
+              className="owner-kpis"
+              aria-label={`Contadores de la sucursal ${sucursal.id}`}
+            >
+              {[
+                ['Empleados', sucursal.empleados],
+                ['Servicios', sucursal.servicios],
+                ['Productos', sucursal.productos],
+                ['Proveedores', sucursal.proveedores],
+                ['Citas registradas', sucursal.citas],
+                ['Ventas registradas', sucursal.ventas],
+              ].map(([nombre, valor]) => (
+                <div className="owner-kpi" key={nombre}>
+                  <span>{nombre}</span>
+                  <strong>{valor ?? '—'}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {edicion !== null ? (
           <EditarSucursal key={edicion} idSucursal={edicion}
@@ -173,7 +181,8 @@ export default function PanelPropietario() {
         ) : <div className="owner-main">
           <div className="owner-branch-list" aria-label="Seleccionar sucursal">
             <h3>Establecimientos</h3>
-            {datos.sucursales.map(s => <button key={s.id} type="button"
+            {datos.sucursales.map(s => <button key={s.id}
+              disabled={guardando}
               aria-pressed={seleccion === s.id}
               className={`owner-branch ${seleccion === s.id ? 'selected' : ''}`}
               onClick={() => { limpiarProductos(); setSeleccion(s.id); }}>
@@ -195,37 +204,41 @@ export default function PanelPropietario() {
                 <div><dt>Dirección</dt><dd>{sucursal.direccion || 'Sin dato'}</dd></div>
                 <div><dt>Código postal</dt><dd>{sucursal.codigo_postal || 'Sin dato'}</dd></div>
                 <div><dt>Ubicación</dt><dd>{sucursal.latitud ?? '—'}, {sucursal.longitud ?? '—'}</dd></div>      
-                <div><dt>Productos</dt><dd>{sucursal.productos}</dd></div>
-                <div><dt>Proveedores</dt><dd>{sucursal.proveedores}</dd></div>
-                <div><dt>Citas</dt><dd>{sucursal.citas}</dd></div>
               </dl>
               <p className="owner-description">{sucursal.descripcion || 'Sin descripción.'}</p>
               {sucursal.motivo_rechazo && <p className="owner-error"><strong>Motivo del rechazo:</strong> {sucursal.motivo_rechazo}</p>}
               <div className="owner-edit-actions">
                 <button type="button" className="button button-secondary"
-                  disabled={sucursal.estado === 'SUSPENDIDO'}
+                  disabled={guardando || sucursal.estado === 'SUSPENDIDO'}
                   onClick={() => { limpiarProductos(); setAviso(''); setEdicion(sucursal.id); }}>
                   Editar datos de esta sucursal
                 </button>
               </div>
-              {sucursal.estado === 'APROBADO' ? <button
-                type="button" className="button button-primary" onClick={mostrarProductos}
-                disabled={cargandoProductos}>
-                {cargandoProductos ? 'Cargando productos…' : 'Ver productos de esta sucursal'}
-              </button> : <p>Esta sucursal requiere aprobación antes de operar.</p>}
-              {errorProductos && <p role="alert" className="owner-error">{errorProductos}</p>}
-              {productos && <div className="owner-products">
-                <h4>Productos (máximo 100)</h4>
-                {productos.length === 0 ? <p>No hay productos asignados a esta sucursal.</p> :
-                  <div className="owner-table-wrap"><table>
-                    <thead><tr><th>Producto</th><th>Precio</th><th>Existencia</th></tr></thead>
-                    <tbody>{productos.map(p => <tr key={p.id}>
-                      <td>{p.nombre_producto}</td>
-                      <td>{p.precio_venta == null ? '—' : `$${Number(p.precio_venta).toFixed(2)}`}</td>
-                      <td>{p.stock_actual ?? '—'}</td>
-                    </tr>)}</tbody>
-                  </table></div>}
-              </div>}
+              {sucursal.estado === 'APROBADO' ? (
+                <>
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    disabled={guardando}
+                    onClick={() => setProductos(abierto => !abierto)}
+                  >
+                    {productos
+                      ? 'Cerrar productos'
+                      : 'Administrar productos de esta sucursal'}
+                  </button>
+
+                  {productos && (
+                    <ProductosSucursal
+                      key={sucursal.id}
+                      idSucursal={sucursal.id}
+                      onTotal={actualizarTotalProductos}
+                      onGuardando={setGuardando}
+                    />
+                  )}
+                </>
+              ) : (
+                <p>Esta sucursal requiere aprobación antes de operar.</p>
+              )}
             </> : <p>Selecciona una sucursal para ver su información.</p>}
           </div>
         </div>}
