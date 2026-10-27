@@ -4,6 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import FormularioSucursal from './FormularioSucursal';
 import EditarSucursal from './EditarSucursal';
 import ProductosSucursal from './ProductosSucursal';
+import ServiciosSucursal from './ServiciosSucursal';
+import PersonalSucursal from './PersonalSucursal';
+import CitasSucursal from './CitasSucursal';
 import './propietario.css';
 
 async function pedir(ruta, signal) {
@@ -33,6 +36,9 @@ export default function PanelPropietario() {
   const [error, setError] = useState('');
   const [seleccion, setSeleccion] = useState(null);
   const [productos, setProductos] = useState(false);
+  const [servicios, setServicios] = useState(false);
+  const [personal, setPersonal] = useState(false);
+  const [citas, setCitas] = useState(false);
 
     const [formulario, setFormulario] = useState(false);
     const [edicion, setEdicion] = useState(null);
@@ -42,6 +48,9 @@ export default function PanelPropietario() {
 
   const limpiarProductos = useCallback(() => {
     setProductos(false);
+    setServicios(false);
+    setPersonal(false);
+    setCitas(false);
   }, []);
 
   const cargar = useCallback(async (idPreferido = null) => {
@@ -88,6 +97,42 @@ export default function PanelPropietario() {
       ),
     } : anterior);
   }, []);
+
+  const actualizarTotalServicios = useCallback((idSucursal, cantidad) => {
+    setDatos(anterior => anterior ? {
+      ...anterior,
+      sucursales: anterior.sucursales.map(s =>
+        s.id === idSucursal
+          ? { ...s, servicios: cantidad }
+          : s
+      ),
+    } : anterior);
+  }, []);
+
+  const actualizarTotalEmpleados = useCallback((idSucursal, cantidad) => {
+    setDatos(anterior => anterior ? {
+      ...anterior,
+      sucursales: anterior.sucursales.map(s =>
+        s.id === idSucursal
+          ? { ...s, empleados: cantidad }
+          : s
+      ),
+    } : anterior);
+  }, []);
+
+  const actualizarTotalCitas = useCallback(
+    (idSucursal, cantidad) => {
+      setDatos(anterior => anterior ? {
+        ...anterior,
+        sucursales: anterior.sucursales.map(s =>
+          s.id === idSucursal
+            ? { ...s, citas: cantidad }
+            : s
+        ),
+      } : anterior);
+    },
+    []
+  );
 
   function guardada(actualizada) {
     setGuardando(false);
@@ -220,7 +265,12 @@ export default function PanelPropietario() {
                     type="button"
                     className="button button-primary"
                     disabled={guardando}
-                    onClick={() => setProductos(abierto => !abierto)}
+                    onClick={() => {
+                      setCitas(false);
+                      setPersonal(false);
+                      setServicios(false);
+                      setProductos(abierto => !abierto);
+                    }}
                   >
                     {productos
                       ? 'Cerrar productos'
@@ -232,6 +282,81 @@ export default function PanelPropietario() {
                       key={sucursal.id}
                       idSucursal={sucursal.id}
                       onTotal={actualizarTotalProductos}
+                      onGuardando={setGuardando}
+                    />
+                  )}
+
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={guardando}
+                    onClick={() => {
+                      setCitas(false);
+                      setPersonal(false);
+                      setProductos(false);
+                      setServicios(abierto => !abierto);
+                    }}
+                  >
+                    {servicios
+                      ? 'Cerrar servicios'
+                      : 'Administrar servicios de esta sucursal'}
+                  </button>
+
+                  {servicios && (
+                    <ServiciosSucursal
+                      key={sucursal.id}
+                      idSucursal={sucursal.id}
+                      onTotal={actualizarTotalServicios}
+                      onGuardando={setGuardando}
+                    />
+                  )}
+
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={guardando}
+                    onClick={() => {
+                      setCitas(false);
+                      setPersonal(false);
+                      setProductos(false);
+                      setServicios(abierto => !abierto);
+                    }}
+                  >
+                    {personal
+                      ? 'Cerrar empleados y horarios'
+                      : 'Administrar empleados y horarios'}
+                  </button>
+
+                  {personal && (
+                    <PersonalSucursal
+                      key={sucursal.id}
+                      idSucursal={sucursal.id}
+                      onTotal={actualizarTotalEmpleados}
+                      onGuardando={setGuardando}
+                    />
+                  )}
+
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={guardando}
+                    onClick={() => {
+                      setProductos(false);
+                      setServicios(false);
+                      setPersonal(false);
+                      setCitas(abierto => !abierto);
+                    }}
+                  >
+                    {citas
+                      ? 'Cerrar citas'
+                      : 'Administrar citas de esta sucursal'}
+                  </button>
+
+                  {citas && (
+                    <CitasSucursal
+                      key={sucursal.id}
+                      idSucursal={sucursal.id}
+                      onTotal={actualizarTotalCitas}
                       onGuardando={setGuardando}
                     />
                   )}

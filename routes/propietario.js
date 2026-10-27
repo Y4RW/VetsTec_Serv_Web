@@ -115,6 +115,21 @@ module.exports = function registrarPropietario(app, {
     requireSucursal,
   });
 
+  require('./serviciosPropietario')(app, {
+    pool,
+    requireSucursal,
+  });
+
+  require('./personalPropietario')(app, {
+    pool,
+    requireSucursal,
+  });
+
+  require('./citasPropietario')(app, {
+    pool,
+    requireSucursal,
+  });
+
   app.use('/api/propietario', (req, res) => {
     const lectura = ['GET', 'HEAD'].includes(req.method);
     if (!lectura) res.set('Allow', 'GET, HEAD');

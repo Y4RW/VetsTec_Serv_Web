@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import InventarioProducto from './InventarioProducto';
 
 const nuevo = () => ({
   codigo_barras: '',
@@ -49,6 +50,7 @@ export default function ProductosSucursal({
   const [busqueda, setBusqueda] = useState('');
   const [consulta, setConsulta] = useState({ q: '', desde: 0 });
   const [form, setForm] = useState(null);
+  const [inventario, setInventario] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [bloqueado, setBloqueado] = useState(false);
@@ -189,6 +191,21 @@ export default function ProductosSucursal({
   }
 
   const ocupado = guardando || cargando;
+
+    if (inventario) {
+    return (
+      <InventarioProducto
+        key={inventario.id}
+        idSucursal={idSucursal}
+        producto={inventario}
+        onGuardando={onGuardando}
+        onCerrar={() => {
+          setInventario(null);
+          cargar(consulta);
+        }}
+      />
+    );
+  }
 
   return (
     <section
@@ -436,6 +453,14 @@ export default function ProductosSucursal({
                           onClick={() => editar(p)}
                         >
                           Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={ocupado || bloqueado || Boolean(form)}
+                          onClick={() => setInventario(p)}
+                        >
+                          Inventario
                         </button>
 
                         <button
