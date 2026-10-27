@@ -16,6 +16,12 @@ const YAML = require("yaml");
 const swaggerUi = require("swagger-ui-express");
 const { cuentaVerificadaSQL } = require('./lib/cuentasEstablecimiento');
 
+const {
+  reservas: reservasCitas,
+  minutos: minutosCitas,
+  ocupaHora: ocupaHoraCita,
+} = require('./lib/agendaCitas');
+
 const registroUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -512,285 +518,133 @@ function generarHorarios(
   return horarios;
 }
 
-app.get(
-  '/api/establecimientos/:id/disponibilidad',
-  async (req, res) => {
-    const negocioId =
-      Number(req.params.id);
+app.get('/api/establecimientos/:id/disponibilidad', async (req, res) => {
+  const negocioId = Number(req.params.id);
 
-    if (
-      !Number.isInteger(
-        negocioId
-      ) ||
-      negocioId <= 0
-    ) {
-      return res.status(400).json({
+  if (
+    !Number.isInteger(negocioId) ||
+    negocioId <= 0 ||
+    negocioId > 2147483647
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: 'Establecimiento inválido.',
+    });
+  }
+
+  try {
+    const negocio = await pool.query(`
+      SELECT id,nombre_establecimiento
+      FROM configuracion_negocio
+      WHERE id=$1
+        AND activo_directorio=TRUE
+        AND EXISTS (
+          SELECT 1
+          FROM verificacion_negocio v
+          WHERE v.id_negocio=configuracion_negocio.id
+            AND v.estado='APROBADO'
+        )
+        AND ${cuentaVerificadaSQL('configuracion_negocio.id')}
+      LIMIT 1
+    `, [negocioId]);
+
+    if (!negocio.rows.length) {
+      return res.status(404).json({
         success: false,
-        message:
-          'El identificador del establecimiento no es válido',
+        message: 'Establecimiento no encontrado.',
       });
     }
 
-    try {
-      /* =============================================
-         VERIFICAR QUE EL NEGOCIO EXISTA
-         ============================================= */
+    const dias = await pool.query(`
+      SELECT
+        d.fecha::text AS fecha,
+        d.capacidad_maxima,
+        d.activo,
+        h.hora_apertura,
+        h.hora_cierre,
+        h.cerrado
+      FROM disponibilidad_negocio d
+      LEFT JOIN horarios_negocio h
+        ON h.id_negocio=d.id_negocio
+        AND h.dia_semana=EXTRACT(DOW FROM d.fecha)::int
+      WHERE d.id_negocio=$1
+        AND d.fecha BETWEEN CURRENT_DATE+1 AND CURRENT_DATE+7
+      ORDER BY d.fecha
+    `, [negocioId]);
 
-      const negocioResult =
-        await pool.query(
-          `
-            SELECT
-              id,
-              nombre_establecimiento
-            FROM configuracion_negocio
-            WHERE id = $1
-              AND activo_directorio = TRUE
-              AND EXISTS (
-                SELECT 1 FROM verificacion_negocio v
-                WHERE v.id_negocio = configuracion_negocio.id AND v.estado = 'APROBADO'
-              )
-              AND ${cuentaVerificadaSQL('configuracion_negocio.id')}
-            LIMIT 1
-          `,
-          [negocioId]
-        );
+    const data = [];
 
-      if (
-        negocioResult.rows
-          .length === 0
-      ) {
-        return res.status(404).json({
-          success: false,
-          message:
-            'Establecimiento no encontrado',
-        });
-      }
-
-      /* =============================================
-         DISPONIBILIDAD DE LOS PRÓXIMOS 7 DÍAS
-         ============================================= */
-
-      const disponibilidadResult =
-        await pool.query(
-          `
-            SELECT
-              d.id,
-              d.fecha,
-              d.capacidad_maxima,
-              d.activo,
-
-              h.hora_apertura,
-              h.hora_cierre,
-              h.cerrado,
-
-              COUNT(s.id)::integer
-                AS solicitudes_actuales
-
-            FROM disponibilidad_negocio d
-
-            LEFT JOIN horarios_negocio h
-              ON h.id_negocio =
-                d.id_negocio
-
-              AND h.dia_semana =
-                EXTRACT(
-                  DOW FROM d.fecha
-                )::integer
-
-            LEFT JOIN solicitudes_cita_publicas s
-              ON s.id_negocio =
-                d.id_negocio
-
-              AND s.fecha_solicitada =
-                d.fecha
-
-              AND s.estado IN (
-                'PENDIENTE',
-                'ACEPTADA',
-                'CONFIRMADA'
-              )
-
-            WHERE d.id_negocio = $1
-
-              AND d.fecha >=
-                CURRENT_DATE + 1
-
-              AND d.fecha <=
-                CURRENT_DATE + 7
-
-            GROUP BY
-              d.id,
-              d.fecha,
-              d.capacidad_maxima,
-              d.activo,
-              h.hora_apertura,
-              h.hora_cierre,
-              h.cerrado
-
-            ORDER BY
-              d.fecha ASC
-          `,
-          [negocioId]
-        );
-
-      const disponibilidad = [];
-
-      for (
-        const dia of
-        disponibilidadResult.rows
-      ) {
-        const ocupadosResult =
-          await pool.query(
-            `
-              SELECT
-                hora_solicitada
-
-              FROM solicitudes_cita_publicas
-
-              WHERE id_negocio = $1
-
-                AND fecha_solicitada = $2
-
-                AND estado IN (
-                  'PENDIENTE',
-                  'ACEPTADA',
-                  'CONFIRMADA'
-                )
-            `,
-            [
-              negocioId,
-              dia.fecha,
-            ]
-          );
-
-        const horariosOcupados =
-          ocupadosResult.rows.map(
-            (item) =>
-              item.hora_solicitada
-          );
-
-        const utilizados =
-          dia.solicitudes_actuales;
-
-        const capacidad =
-          dia.capacidad_maxima;
-
-        const restantes =
-          Math.max(
-            capacidad -
-              utilizados,
-            0
-          );
-
-        let estado =
-          'available';
-
-        /*
-         * Si el negocio cerró ese día,
-         * la disponibilidad está desactivada
-         * o ya llegó a su capacidad:
-         */
-        if (
-          !dia.activo ||
-          dia.cerrado ||
-          !dia.hora_apertura ||
-          !dia.hora_cierre ||
-          restantes === 0
-        ) {
-          estado = 'full';
-        } else {
-          /*
-           * Consideramos disponibilidad limitada
-           * cuando queda 40% o menos
-           * de la capacidad.
-           */
-          const limite =
-            Math.max(
-              1,
-              Math.ceil(
-                capacidad * 0.4
-              )
-            );
-
-          if (
-            restantes <= limite
-          ) {
-            estado =
-              'limited';
-          }
-        }
-
-        let horarios = [];
-
-        if (
-          estado !== 'full'
-        ) {
-          horarios =
-            generarHorarios(
-              dia.hora_apertura,
-              dia.hora_cierre,
-              horariosOcupados
-            );
-        }
-
-        disponibilidad.push({
-          date: dia.fecha,
-          status: estado,
-
-          capacity:
-            capacidad,
-
-          used:
-            utilizados,
-
-          remaining:
-            restantes,
-
-          openTime:
-            dia.hora_apertura,
-
-          closeTime:
-            dia.hora_cierre,
-
-          slots:
-            horarios,
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-
-        establishment: {
-          id:
-            negocioResult.rows[0]
-              .id,
-
-          name:
-            negocioResult.rows[0]
-              .nombre_establecimiento,
-        },
-
-        total:
-          disponibilidad.length,
-
-        data:
-          disponibilidad,
-      });
-    } catch (error) {
-      console.error(
-        'Error consultando disponibilidad:',
-        error.message
+    for (const dia of dias.rows) {
+      const ocupadas = await reservasCitas(
+        pool,
+        negocioId,
+        dia.fecha
       );
 
-      res.status(500).json({
-        success: false,
+      const restantes = Math.max(
+        0,
+        dia.capacidad_maxima - ocupadas.length
+      );
 
-        message:
-          'No fue posible consultar la disponibilidad',
+      const slots = [];
+
+      if (
+        dia.activo &&
+        !dia.cerrado &&
+        dia.hora_apertura &&
+        dia.hora_cierre &&
+        restantes > 0
+      ) {
+        for (
+          let m = minutosCitas(dia.hora_apertura);
+          m < minutosCitas(dia.hora_cierre);
+          m += 60
+        ) {
+          if (!ocupadas.some(r => ocupaHoraCita(r, m))) {
+            slots.push(minutosAHora(m));
+          }
+        }
+      }
+
+      data.push({
+        date: dia.fecha,
+        status: !slots.length
+          ? 'full'
+          : restantes <= Math.max(
+            1,
+            Math.ceil(dia.capacidad_maxima * 0.4)
+          )
+            ? 'limited'
+            : 'available',
+        capacity: dia.capacidad_maxima,
+        used: ocupadas.length,
+        remaining: restantes,
+        openTime: dia.hora_apertura,
+        closeTime: dia.hora_cierre,
+        slots,
       });
     }
+
+    res.set('Cache-Control', 'no-store');
+
+    return res.json({
+      success: true,
+      establishment: {
+        id: negocio.rows[0].id,
+        name: negocio.rows[0].nombre_establecimiento,
+      },
+      total: data.length,
+      data,
+    });
+  } catch (e) {
+    console.error('Disponibilidad:', e.code || 'ERROR');
+
+    return res.status(503).json({
+      success: false,
+      message: 'No fue posible consultar la disponibilidad.',
+    });
   }
-);
+});
 
 /* =========================================================
    SOLICITUD PÚBLICA DE CITA
@@ -900,6 +754,7 @@ app.post('/api/solicitudes-cita', async (req, res) => {
             AND ${cuentaVerificadaSQL('configuracion_negocio.id')}
 
           LIMIT 1
+          FOR UPDATE
         `,
         [negocioId]
       );
@@ -1053,35 +908,16 @@ app.post('/api/solicitudes-cita', async (req, res) => {
        CAPACIDAD DEL DÍA
        ========================= */
 
-    const cantidadResult =
-      await client.query(
-        `
-          SELECT
-            COUNT(*)::integer AS total
+    const reservasDelDia = await reservasCitas(
+      client,
+      negocioId,
+      fecha
+    );
 
-          FROM solicitudes_cita_publicas
-
-          WHERE id_negocio = $1
-            AND fecha_solicitada = $2
-
-            AND estado IN (
-              'PENDIENTE',
-              'ACEPTADA',
-              'CONFIRMADA'
-            )
-        `,
-        [
-          negocioId,
-          fecha,
-        ]
-      );
-
-    const utilizadas =
-      cantidadResult.rows[0].total;
+    const utilizadas = reservasDelDia.length;
 
     const capacidad =
-      disponibilidadResult.rows[0]
-        .capacidad_maxima;
+      disponibilidadResult.rows[0].capacidad_maxima;
 
     if (utilizadas >= capacidad) {
       await client.query('ROLLBACK');
@@ -1097,33 +933,11 @@ app.post('/api/solicitudes-cita', async (req, res) => {
        HORARIO YA OCUPADO
        ========================= */
 
-    const horarioOcupado =
-      await client.query(
-        `
-          SELECT id
+    const horarioOcupado = reservasDelDia.some(
+      r => ocupaHoraCita(r, minutosCitas(hora))
+    );
 
-          FROM solicitudes_cita_publicas
-
-          WHERE id_negocio = $1
-            AND fecha_solicitada = $2
-            AND hora_solicitada = $3::time
-
-            AND estado IN (
-              'PENDIENTE',
-              'ACEPTADA',
-              'CONFIRMADA'
-            )
-
-          LIMIT 1
-        `,
-        [
-          negocioId,
-          fecha,
-          hora,
-        ]
-      );
-
-    if (horarioOcupado.rows.length > 0) {
+    if (horarioOcupado) {
       await client.query('ROLLBACK');
 
       return res.status(409).json({

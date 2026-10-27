@@ -1,4 +1,5 @@
 const { createHash } = require('node:crypto');
+const operacionesInventario = require('./operacionesInventario');
 
 const fallo = (status, message) =>
   Object.assign(new Error(message), { status });
@@ -156,7 +157,9 @@ module.exports = function registrarCatalogo(app, {
         ? entero(req.params.idProducto, 1)
         : null;
 
-      const d = escritura ? validar(req.body, req.method) : null;
+      const d = escritura && !req.esInventario
+        ? validar(req.body, req.method)
+        : null;
 
       db = await pool.connect();
 
@@ -209,7 +212,10 @@ module.exports = function registrarCatalogo(app, {
 
       let data;
 
-      if (!escritura) {
+      if (req.esInventario) {
+        data = await operacionesInventario(db, req);
+      } else if (!escritura) {
+
         const desde = entero(req.query.desde ?? '0');
         const q = req.query.q ?? '';
 
@@ -385,7 +391,9 @@ module.exports = function registrarCatalogo(app, {
       const message = e.status
         ? e.message
         : e.code === '23505'
-          ? 'Ese código de barras ya está registrado. La restricción actual es global.'
+          ? req.esInventario
+            ? 'La operación ya fue registrada. Consulta el historial antes de continuar.'
+            : 'Ese código de barras ya está registrado. La restricción actual es global.'
           : e.code === '23503'
             ? 'Hay registros relacionados. Actualiza los datos; no se puede completar esta operación.'
             : 'No pudimos confirmar la operación. Recarga la lista antes de reintentar.';
@@ -402,6 +410,25 @@ module.exports = function registrarCatalogo(app, {
       db?.release();
     }
   }
+
+  function marcarInventario(req, res, next) {
+    req.esInventario = true;
+    next();
+  }
+
+  app.get(
+    `${base}/:idProducto/movimientos`,
+    requireSucursal,
+    marcarInventario,
+    manejar
+  );
+
+  app.post(
+    `${base}/:idProducto/movimientos`,
+    requireSucursal,
+    marcarInventario,
+    manejar
+  );
 
   // Se registra después del middleware de sesión y propietario.
   app.get(base, requireSucursal, manejar);
