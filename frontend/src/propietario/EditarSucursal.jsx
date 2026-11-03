@@ -28,6 +28,7 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [conflicto, setConflicto] = useState(false);
+  const [guardadoIncierto, setGuardadoIncierto] = useState(false);
   const [editandoDireccion, setEditandoDireccion] = useState(false);
   const [mapa, setMapa] = useState(null);
   const [preview, setPreview] = useState('');
@@ -42,7 +43,11 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
     peticion.current?.abort();
     const controller = new AbortController();
     peticion.current = controller;
-    setCargando(true); setError(''); setConflicto(false); setMapa(null);
+    setCargando(true);
+    setError('');
+    setConflicto(false);
+    setGuardadoIncierto(false);
+    setMapa(null);
     try {
       const respuesta = await fetch(`/api/propietario/sucursales/${idSucursal}`, {
         credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
@@ -125,16 +130,25 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
   const requiereRevision = identidadCambiada || requisitosCambiados || actual?.estado === 'RECHAZADO';
   const requiereFoto = form?.tipoServicio === 'ESTETICA' && (identidadCambiada || !actual?.tiene_evidencia);
   const suspendida = actual?.estado === 'SUSPENDIDO';
+  const requiereRecarga = conflicto || guardadoIncierto;
 
   async function guardar(e) {
     e.preventDefault();
-    if (enviando.current || suspendida || conflicto) return;
+    if (enviando.current || suspendida || requiereRecarga) return;
     if (!form.nombreEstablecimiento.trim() || !/^\d{10}$/.test(form.telefonoWhatsapp) ||
         !/^\d{5}$/.test(form.codigoPostal) || !form.direccion.trim()) {
       setError('Completa nombre, teléfono de 10 dígitos y dirección con código postal de 5 dígitos.'); return;
     }
-    if ([form.latitud, form.longitud].some(v => v === '' || v == null || !Number.isFinite(Number(v)))) {
-      setError('Confirma la ubicación de la sucursal en el mapa.'); return;
+    if (
+        [[form.latitud, 90], [form.longitud, 180]].some(
+          ([valor, maximo]) =>
+            !texto(valor) ||
+            !Number.isFinite(Number(valor)) ||
+            Math.abs(Number(valor)) > maximo
+        )
+      ) {
+    setError('Confirma la ubicación de la sucursal en el mapa.');
+    return;
     }
     if (esVeterinaria && (!form.nombreResponsable.trim() || !/^\d{1,30}$/.test(form.cedulaProfesional.trim()))) {
       setError('Indica el profesional responsable y su cédula de hasta 30 dígitos.'); return;
@@ -145,6 +159,8 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
     enviando.current = true; setGuardando(true); onGuardando(true); setError('');
     const controller = new AbortController();
     peticion.current = controller;
+    let respuestaDefinitiva = false;
+    
     try {
       const body = new FormData();
       for (const campo of campos) body.append(campo, texto(form[campo]));
@@ -158,22 +174,58 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
       if (respuesta.status === 401) window.dispatchEvent(new Event('vetstec:sesion-vencida'));
       const json = await respuesta.json().catch(() => null);
       controller.signal.throwIfAborted();
-      if (!respuesta.ok || json?.success !== true || json.data?.id !== idSucursal) {
-        if (respuesta.status === 409 && json?.code === 'VERSION_ANTIGUA' && montado.current) setConflicto(true);
-        throw new Error(json?.message || 'No se pudo confirmar el guardado. Actualiza los datos antes de reintentar.');
+      respuestaDefinitiva =
+        !respuesta.ok &&
+        respuesta.status >= 400 &&
+        respuesta.status < 500 &&
+        respuesta.status !== 408 &&
+        json?.success === false;
+      
+      if (
+        !respuesta.ok ||
+        json?.success !== true ||
+        json.data?.id !== idSucursal ||
+        typeof json.data?.version !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(json.data.version)
+      ) {
+        if (
+          respuesta.status === 409 &&
+          json?.code === 'VERSION_ANTIGUA' &&
+          montado.current
+        ) {
+          setConflicto(true);
+        }
+      
+        throw new Error(
+          json?.message ||
+          'No se pudo confirmar el guardado. Actualiza los datos antes de reintentar.'
+        );
       }
-      if (montado.current) onGuardada(json.data);
+      
+      respuestaDefinitiva = true;
+      if (montado.current) {
+        onGuardada(json.data);
+      }
     } catch (fallo) {
       if (montado.current && !controller.signal.aborted) {
-        setError(fallo instanceof TypeError
-          ? 'Se perdió la conexión. Vuelve al panel y actualiza los datos antes de repetir el guardado.' : fallo.message);
+        setGuardadoIncierto(!respuestaDefinitiva);
+
+        setError(
+          !respuestaDefinitiva
+            ? 'No pudimos confirmar si los cambios se guardaron. Carga los datos actuales antes de volver a guardar.'
+            : fallo.message
+        );
       }
     } finally {
       enviando.current = false;
-      if (montado.current) { setGuardando(false); onGuardando(false); }
+
+      if (montado.current) {
+        setGuardando(false);
+        onGuardando(false);
+      }
     }
   }
-
+  
   return <section className="owner-create owner-edit" aria-labelledby="sucursal-editar-titulo">
     <div className="owner-create-heading">
       <div>
@@ -187,12 +239,25 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
     </div>
     {cargando && <p role="status">Abriendo datos actuales…</p>}
     {error && <p className="owner-error" role="alert">{error}</p>}
-    {!cargando && (!form || conflicto) && <div className="owner-edit-reload">
-      {conflicto && <p>Cargar la versión actual descarta lo que escribiste en este formulario.</p>}
-      <button type="button" className="button button-secondary" disabled={guardando} onClick={cargar}>
-        Cargar datos actuales
-      </button>
-    </div>}
+    {!cargando && (!form || requiereRecarga) && (
+      <div className="owner-edit-reload">
+        {requiereRecarga && (
+          <p>
+            Cargar la versión actual reemplaza este formulario con los datos
+            guardados. Copia antes cualquier cambio que quieras conservar.
+          </p>
+        )}
+    
+        <button
+          type="button"
+          className="button button-secondary"
+          disabled={guardando}
+          onClick={cargar}
+        >
+          Cargar datos actuales
+        </button>
+      </div>
+    )}
     {!cargando && form && <form className="register-card" onSubmit={guardar} aria-busy={guardando}>
       <p className="owner-edit-notice" role="status">
         {suspendida ? 'Esta sucursal está suspendida. Contacta a VetStec para revisar su situación.' : requiereRevision
@@ -200,7 +265,10 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
           : 'Cambiar teléfono, correo de contacto o descripción conserva el estado de revisión. Cambiar nombre, dirección, mapa, tipo o requisitos necesita una nueva revisión.'}
       </p>
       {actual.motivo_rechazo && <p className="owner-error"><strong>Motivo del rechazo:</strong> {actual.motivo_rechazo}</p>}
-      <fieldset className="owner-edit-fields" disabled={guardando || suspendida || conflicto}>
+      <fieldset
+        className="owner-edit-fields"
+        disabled={guardando || suspendida || requiereRecarga}
+      >
         <legend className="owner-edit-legend">Datos de la sucursal</legend>
         <div className="register-form-grid">
           <label className="form-field form-field-full"><span>Nombre de la sucursal *</span>
