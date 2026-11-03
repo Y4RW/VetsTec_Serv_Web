@@ -21,3 +21,7 @@
 | 17 | Hay logs de las peticiones en consola o archivo | Falta | Falta integrar la librería `morgan` para el registro de peticiones en el backend[cite: 5]. |
 | 18 | Las versiones de dependencias están fijadas | Cumplido | Se incluyen los archivos `package-lock.json` tanto en la raíz como en la carpeta `/frontend`[cite: 4]. |
 | 19 | Clonacion limpia | Cumplido | El sistema despliega e inicia correctamente en una carpeta limpia utilizando el script de automatización `deploy.sh` |
+| 20 | Análisis estático de código (SonarQube) | Cumplido | Se configuró correctamente el proyecto `vetstec-backend` y se ejecutó el escáner mediante Docker, obteniendo Quality Gate aprobado. |
+| 21 | Control de Vulnerabilidades (Seguridad) | Atendido | Se detectaron 4 vulnerabilidades (Calificación D) enfocadas en puntos débiles de endpoints y manejo de peticiones. |
+| 22 | Control de Fiabilidad (Bugs) | Atendido | Se identificaron 27 bugs orientados a errores lógicos y de ejecución en rutas y controladores de Express. |
+| 23 | Gestión de Mantenibilidad (Code Smells) | Cumplido | Se registró 1 Code Smell (Calificación A), validando una adecuada estructura modular del backend. |
