@@ -66,6 +66,22 @@ function statusText(status) {
   return 'Sin disponibilidad';
 }
 
+function buildWhatsAppUrl(rawPhone, text) {
+  const digits = String(rawPhone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  const mxPhone = digits.length === 10 ? `52${digits}` : digits;
+  return `https://wa.me/${mxPhone}?text=${encodeURIComponent(text)}`;
+}
+
+function formatPrice(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '';
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+  }).format(num);
+}
+
 /* =========================================================
    COMPONENTE
    ========================================================= */
@@ -87,6 +103,8 @@ export default function DirectoryPage() {
     selectedEstablishment,
     setSelectedEstablishment,
   ] = useState(null);
+
+  const [activeTab, setActiveTab] = useState('servicios');
 
   const [availability, setAvailability] = useState([]);
 
@@ -195,6 +213,14 @@ export default function DirectoryPage() {
 
           horarios:
             item.horarios || [],
+
+          servicios:
+            Array.isArray(item.servicios) ? item.servicios : [],
+
+          showProducts: Boolean(item.mostrar_productos_directorio),
+
+          productos:
+            Array.isArray(item.productos) ? item.productos : [],
         }));
 
       setEstablishments(
@@ -291,6 +317,7 @@ async function openEstablishment(item, triggerElement = null) {
       lastTriggerRef.current = triggerElement;
     }
     setSelectedEstablishment(item);
+    setActiveTab('servicios');
 
     setSelectedDay(null);
     setSelectedTime('');
@@ -784,18 +811,34 @@ async function openEstablishment(item, triggerElement = null) {
                           </p>
                         </div>
 
-                        <button
-                          type="button"
-                          className="establishment-button"
-                        onClick={(e) =>
-                            openEstablishment(
-                              item,
-                              e.currentTarget
-                            )
-                          }
-                        >
-                          Ver información
-                        </button>
+                        <div className="establishment-card-actions">
+                          <button
+                            type="button"
+                            className="establishment-button"
+                            onClick={(e) =>
+                              openEstablishment(
+                                item,
+                                e.currentTarget
+                              )
+                            }
+                          >
+                            Ver información
+                          </button>
+
+                          {item.phone && (
+                            <a
+                              className="establishment-whatsapp-btn"
+                              href={buildWhatsAppUrl(
+                                item.phone,
+                                `Hola ${item.name}, los encontré en VetStec y me gustaría pedir información.`
+                              )}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              💬 WhatsApp
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </article>
                   )
@@ -992,6 +1035,20 @@ async function openEstablishment(item, triggerElement = null) {
                 <div className="modal-actions">
                   {selectedEstablishment.phone && (
                     <a
+                      className="button button-whatsapp"
+                      href={buildWhatsAppUrl(
+                        selectedEstablishment.phone,
+                        `Hola ${selectedEstablishment.name}, los vi en VetStec y quisiera consultar sobre sus servicios.`
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      💬 Enviar WhatsApp
+                    </a>
+                  )}
+
+                  {selectedEstablishment.phone && (
+                    <a
                       className="button button-primary"
                       href={`tel:${selectedEstablishment.phone}`}
                     >
@@ -1037,387 +1094,338 @@ async function openEstablishment(item, triggerElement = null) {
             </div>
 
             {/* =============================================
-                DISPONIBILIDAD
+                PESTAÑAS DEL ESTABLECIMIENTO (SERVICIOS, CITAS, PRODUCTOS)
                 ============================================= */}
+            <div className="modal-tabs-bar" role="tablist" aria-label="Secciones del establecimiento">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'servicios'}
+                className={`modal-tab-btn ${activeTab === 'servicios' ? 'active' : ''}`}
+                onClick={() => setActiveTab('servicios')}
+              >
+                🩺 Servicios ({selectedEstablishment.servicios?.length || 0})
+              </button>
 
-            <div className="availability-section">
-              <div className="availability-heading">
-                <div>
-                  <span className="eyebrow">
-                    Solicitud de cita
-                  </span>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'citas'}
+                className={`modal-tab-btn ${activeTab === 'citas' ? 'active' : ''}`}
+                onClick={() => setActiveTab('citas')}
+              >
+                📅 Citas
+              </button>
 
-                  <h3>
-                    Consulta la disponibilidad
-                  </h3>
+              {selectedEstablishment.showProducts && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'productos'}
+                  className={`modal-tab-btn ${activeTab === 'productos' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('productos')}
+                >
+                  🛍️ Productos ({selectedEstablishment.productos?.length || 0})
+                </button>
+              )}
+            </div>
 
-                  <p>
-                    Selecciona un día y después
-                    el horario que prefieras.
-                  </p>
+            {activeTab === 'servicios' && (
+              <div className="modal-tab-panel" role="tabpanel">
+                <div className="modal-tab-panel-head">
+                  <div>
+                    <h3>🩺 Servicios disponibles</h3>
+                    <p>Consulta los servicios registrados por este establecimiento.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    onClick={() => setActiveTab('citas')}
+                  >
+                    Agendar cita →
+                  </button>
                 </div>
 
-                <div className="availability-legend">
-                  <span>
-                    <i className="legend available" />
-                    Disponible
-                  </span>
-
-                  <span>
-                    <i className="legend limited" />
-                    Pocos espacios
-                  </span>
-
-                  <span>
-                    <i className="legend full" />
-                    Sin disponibilidad
-                  </span>
-                </div>
-              </div>
-
-              {!requestSent ? (
-                <>
-                {availabilityLoading && (
-                  <div className="availability-loading">
-                    <div className="loading-spinner" />
-
+                {selectedEstablishment.servicios?.length > 0 ? (
+                  <div className="catalog-items-grid">
+                    {selectedEstablishment.servicios.map((srv) => (
+                      <div key={srv.id} className="catalog-item-card">
+                        <div>
+                          <strong>{srv.nombre}</strong>
+                          <small>
+                            {srv.tipo || 'General'}
+                            {srv.duracion_min ? ` · ${srv.duracion_min} min` : ''}
+                          </small>
+                        </div>
+                        {srv.precio != null && (
+                          <span className="catalog-price">
+                            {formatPrice(srv.precio)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="availability-empty">
+                    <span>🩺</span>
                     <div>
-                      <strong>
-                        Consultando disponibilidad...
-                      </strong>
-
-                      <p>
-                        Estamos revisando los horarios disponibles
-                        del establecimiento.
-                      </p>
+                      <strong>Sin servicios publicados aún</strong>
+                      <p>Puedes consultar disponibilidad de citas o escribir por WhatsApp.</p>
                     </div>
                   </div>
                 )}
+              </div>
+            )}
 
-                {!availabilityLoading &&
-                  availabilityError && (
-                    <div className="availability-error">
-                      <span>⚠️</span>
+            {activeTab === 'productos' && selectedEstablishment.showProducts && (
+              <div className="modal-tab-panel" role="tabpanel">
+                <div className="modal-tab-panel-head">
+                  <div>
+                    <h3>🛍️ Productos disponibles en tienda</h3>
+                    <p>Artículos con existencia disponible en sucursal.</p>
+                  </div>
+                </div>
 
-                      <div>
-                        <strong>
-                          No pudimos cargar la disponibilidad
-                        </strong>
-
-                        <p>
-                          {availabilityError}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {!availabilityLoading &&
-                  !availabilityError &&
-                  availability.length > 0 && (
-                    <div className="availability-days">
-                      {availability.map((day) => (
-                        <button
-                          key={day.date}
-                          type="button"
-                          disabled={day.status === 'full'}
-                          aria-pressed={selectedDay?.date === day.date}
-                          className={`availability-day ${day.status} ${
-                            selectedDay?.date === day.date
-                              ? 'selected'
-                              : ''
-                          }`}
-                          onClick={() =>
-                            selectDay(day)
-                          }
-                        >
-                          <strong>
-                            {formatDate(day.date)}
-                          </strong>
-
-                          <span>
-                            {statusText(day.status)}
+                {selectedEstablishment.productos?.length > 0 ? (
+                  <div className="catalog-items-grid">
+                    {selectedEstablishment.productos.map((prod) => (
+                      <div key={prod.id} className="catalog-item-card">
+                        <div>
+                          <strong>{prod.nombre}</strong>
+                          <small>
+                            {prod.tipo_uso || 'Venta'} · {prod.stock} disponibles
+                          </small>
+                        </div>
+                        {prod.precio != null && (
+                          <span className="catalog-price">
+                            {formatPrice(prod.precio)}
                           </span>
-
-                          {day.status !== 'full' && (
-                            <small>
-                              {day.remaining}{' '}
-                              {day.remaining === 1
-                                ? 'espacio'
-                                : 'espacios'}
-                            </small>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {!availabilityLoading &&
-                  !availabilityError &&
-                  availability.length === 0 && (
-                    <div className="availability-empty">
-                      <span>📅</span>
-
-                      <div>
-                        <strong>
-                          Sin disponibilidad publicada
-                        </strong>
-
-                        <p>
-                          Este establecimiento todavía no ha
-                          configurado horarios para los próximos días.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedDay && (
-                    <div className="time-section">
-                      <h4>
-                        Horarios disponibles para{' '}
-                        {formatDate(
-                          selectedDay.date
-                        )}
-                      </h4>
-
-                      <div className="time-grid">
-                        {selectedDay.slots.map(
-                          (slot) => (
-                            <button
-                              key={
-                                slot
-                              }
-                              type="button"
-                              aria-pressed={selectedTime === slot}
-                              className={
-                                selectedTime ===
-                                slot
-                                  ? 'selected'
-                                  : ''
-                              }
-                              onClick={() =>
-                                setSelectedTime(
-                                  slot
-                                )
-                              }
-                            >
-                              {
-                                slot
-                              }
-                            </button>
-                          )
                         )}
                       </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="availability-empty">
+                    <span>🛍️</span>
+                    <div>
+                      <strong>Sin productos en existencia por el momento</strong>
+                      <p>Este establecimiento tiene activa su tienda, pero actualmente no cuenta con stock disponible.</p>
                     </div>
-                  )}
+                  </div>
+                )}
+              </div>
+            )}
 
-                  {!availabilityLoading &&
-                    !availabilityError &&
-                    availability.length > 0 && (
-                      <form
-                        className="appointment-form"
-                        onSubmit={submitAppointment}
-                      >
-                    <div className="appointment-form-heading">
-                      <h4>
-                        Datos para solicitar la cita
-                      </h4>
+            {activeTab === 'citas' && (
+              <div className="availability-section" role="tabpanel">
+                <div className="availability-heading">
+                  <div>
+                    <span className="eyebrow">Solicitud de cita</span>
+                    <h3>Consulta la disponibilidad</h3>
+                    <p>Selecciona un día y después el horario que prefieras.</p>
+                  </div>
 
-                      <p>
-                        No necesitas crear una
-                        cuenta.
-                      </p>
-                    </div>
+                  <div className="availability-legend">
+                    <span><i className="legend available" />Disponible</span>
+                    <span><i className="legend limited" />Pocos espacios</span>
+                    <span><i className="legend full" />Sin disponibilidad</span>
+                  </div>
+                </div>
 
-                    <div className="appointment-fields">
-                      <div className="form-field">
-                        <label htmlFor="pet-name">
-                          Nombre de la mascota
-                        </label>
-
-                        <input
-                          id="pet-name"
-                          type="text"
-                          value={
-                            petName
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setPetName(
-                              event
-                                .target
-                                .value
-                            )
-                          }
-                          placeholder="Ej. Milo"
-                          maxLength={
-                            60
-                          }
-                        />
-                      </div>
-
-                      <div className="form-field">
-                        <label htmlFor="appointment-phone">
-                          Teléfono / WhatsApp
-                        </label>
-
-                        <input
-                          id="appointment-phone"
-                          type="tel"
-                          value={
-                            phone
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setPhone(
-                              event
-                                .target
-                                .value
-                            )
-                          }
-                          placeholder="55 1234 5678"
-                          maxLength={
-                            14
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    {formError && (
-                      <div
-                        className="form-error"
-                        role="alert"
-                      >
-                        ⚠️{' '}
-                        {formError}
+                {!requestSent ? (
+                  <>
+                    {availabilityLoading && (
+                      <div className="availability-loading">
+                        <div className="loading-spinner" />
+                        <div>
+                          <strong>Consultando disponibilidad...</strong>
+                          <p>Estamos revisando los horarios disponibles del establecimiento.</p>
+                        </div>
                       </div>
                     )}
 
-                    <div className="appointment-summary">
-                      <div>
-                        <span>
-                          Día
-                        </span>
-
-                        <strong>
-                          {selectedDay
-                            ? formatDate(
-                                selectedDay.date
-                              )
-                            : 'Sin seleccionar'}
-                        </strong>
+                    {!availabilityLoading && availabilityError && (
+                      <div className="availability-error">
+                        <span>⚠️</span>
+                        <div>
+                          <strong>No pudimos cargar la disponibilidad</strong>
+                          <p>{availabilityError}</p>
+                        </div>
                       </div>
+                    )}
 
+                    {!availabilityLoading && !availabilityError && availability.length > 0 && (
+                      <div className="availability-days">
+                        {availability.map((day) => (
+                          <button
+                            key={day.date}
+                            type="button"
+                            disabled={day.status === 'full'}
+                            aria-pressed={selectedDay?.date === day.date}
+                            className={`availability-day ${day.status} ${
+                              selectedDay?.date === day.date ? 'selected' : ''
+                            }`}
+                            onClick={() => selectDay(day)}
+                          >
+                            <strong>{formatDate(day.date)}</strong>
+                            <span>{statusText(day.status)}</span>
+                            {day.status !== 'full' && (
+                              <small>
+                                {day.remaining} {day.remaining === 1 ? 'espacio' : 'espacios'}
+                              </small>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {!availabilityLoading && !availabilityError && availability.length === 0 && (
+                      <div className="availability-empty">
+                        <span>📅</span>
+                        <div>
+                          <strong>Sin disponibilidad publicada</strong>
+                          <p>Este establecimiento todavía no ha configurado horarios para los próximos días.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedDay && (
+                      <div className="time-section">
+                        <h4>Horarios disponibles para {formatDate(selectedDay.date)}</h4>
+                        <div className="time-grid">
+                          {selectedDay.slots.map((slot) => (
+                            <button
+                              key={slot}
+                              type="button"
+                              aria-pressed={selectedTime === slot}
+                              className={selectedTime === slot ? 'selected' : ''}
+                              onClick={() => setSelectedTime(slot)}
+                            >
+                              {slot}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!availabilityLoading && !availabilityError && availability.length > 0 && (
+                      <form className="appointment-form" onSubmit={submitAppointment}>
+                        <div className="appointment-form-heading">
+                          <h4>Datos para solicitar la cita</h4>
+                          <p>No necesitas crear una cuenta.</p>
+                        </div>
+
+                        <div className="appointment-fields">
+                          <div className="form-field">
+                            <label htmlFor="pet-name">Nombre de la mascota</label>
+                            <input
+                              id="pet-name"
+                              type="text"
+                              value={petName}
+                              onChange={(event) => setPetName(event.target.value)}
+                              placeholder="Ej. Milo"
+                              maxLength={60}
+                            />
+                          </div>
+
+                          <div className="form-field">
+                            <label htmlFor="appointment-phone">Teléfono / WhatsApp</label>
+                            <input
+                              id="appointment-phone"
+                              type="tel"
+                              value={phone}
+                              onChange={(event) => setPhone(event.target.value)}
+                              placeholder="55 1234 5678"
+                              maxLength={14}
+                            />
+                          </div>
+                        </div>
+
+                        {formError && (
+                          <div className="form-error" role="alert">
+                            ⚠️ {formError}
+                          </div>
+                        )}
+
+                        <div className="appointment-summary">
+                          <div>
+                            <span>Día</span>
+                            <strong>{selectedDay ? formatDate(selectedDay.date) : 'Sin seleccionar'}</strong>
+                          </div>
+                          <div>
+                            <span>Horario</span>
+                            <strong>{selectedTime || 'Sin seleccionar'}</strong>
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="button button-primary appointment-submit"
+                          disabled={requestSending}
+                        >
+                          {requestSending ? 'Enviando solicitud...' : 'Solicitar cita'}
+                        </button>
+
+                        <p className="appointment-note">
+                          La solicitud no representa una cita confirmada. El establecimiento deberá aceptarla o ponerse en contacto contigo.
+                        </p>
+                      </form>
+                    )}
+                  </>
+                ) : (
+                  <div className="appointment-success">
+                    <div className="success-icon">✓</div>
+                    <h3>Solicitud enviada</h3>
+                    <p>Tu solicitud para <strong>{petName}</strong> fue preparada correctamente.</p>
+
+                    <div className="success-summary">
                       <div>
-                        <span>
-                          Horario
-                        </span>
-
-                        <strong>
-                          {selectedTime ||
-                            'Sin seleccionar'}
-                        </strong>
+                        <span>Establecimiento</span>
+                        <strong>{selectedEstablishment.name}</strong>
+                      </div>
+                      <div>
+                        <span>Fecha</span>
+                        <strong>{formatDate(selectedDay.date)}</strong>
+                      </div>
+                      <div>
+                        <span>Hora</span>
+                        <strong>{selectedTime}</strong>
                       </div>
                     </div>
-
-                    <button
-                      type="submit"
-                      className="button button-primary appointment-submit"
-                      disabled={requestSending}
-                    >
-                      {requestSending
-                        ? 'Enviando solicitud...'
-                        : 'Solicitar cita'}
-                    </button>
 
                     <p className="appointment-note">
-                      La solicitud no representa
-                      una cita confirmada. El
-                      establecimiento deberá
-                      aceptarla o ponerse en
-                      contacto contigo.
+                      La solicitud fue registrada correctamente. Recuerda que aún no representa una cita confirmada. El establecimiento deberá aceptarla o ponerse en contacto contigo.
                     </p>
-                  </form>
+
+                    <div className="success-actions">
+                      {selectedEstablishment.phone && (
+                        <a
+                          className="button button-whatsapp"
+                          href={buildWhatsAppUrl(
+                            selectedEstablishment.phone,
+                            `Hola ${selectedEstablishment.name}, acabo de solicitar una cita en VetStec para mi mascota *${petName.trim()}* el día *${formatDate(
+                              selectedDay.date
+                            )}* a las *${selectedTime}*. ¿Me podrían confirmar disponibilidad?`
+                          )}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          💬 Enviar comprobante por WhatsApp
+                        </a>
+                      )}
+
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={() => openEstablishment(selectedEstablishment)}
+                      >
+                        Hacer otra solicitud
+                      </button>
+                    </div>
+                  </div>
                 )}
-                </>
-              ) : (
-                <div className="appointment-success">
-                  <div className="success-icon">
-                    ✓
-                  </div>
-
-                  <h3>
-                    Solicitud enviada
-                  </h3>
-
-                  <p>
-                    Tu solicitud para{' '}
-                    <strong>
-                      {petName}
-                    </strong>{' '}
-                    fue preparada correctamente.
-                  </p>
-
-                  <div className="success-summary">
-                    <div>
-                      <span>
-                        Establecimiento
-                      </span>
-
-                      <strong>
-                        {
-                          selectedEstablishment.name
-                        }
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>
-                        Fecha
-                      </span>
-
-                      <strong>
-                        {formatDate(
-                          selectedDay.date
-                        )}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>
-                        Hora
-                      </span>
-
-                      <strong>
-                        {
-                          selectedTime
-                        }
-                      </strong>
-                    </div>
-                  </div>
-
-                  <p className="appointment-note">
-                    La solicitud fue registrada correctamente.
-                    Recuerda que aún no representa una cita
-                    confirmada. El establecimiento deberá
-                    aceptarla o ponerse en contacto contigo.
-                  </p>
-
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={() => {
-                      openEstablishment(
-                        selectedEstablishment
-                      );
-                    }}
-                  >
-                    Hacer otra solicitud
-                  </button>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </section>
         </div>
       )}

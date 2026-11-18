@@ -16,7 +16,9 @@ function formularioDe(datos) {
     telefonoWhatsapp: datos.telefono_whatsapp || '', correoContacto: datos.correo_contacto || '',
     descripcion: datos.descripcion || '', direccion: datos.direccion || '', codigoPostal: datos.codigo_postal || '',
     latitud: datos.latitud ?? '', longitud: datos.longitud ?? '', nombreResponsable: datos.nombre_responsable || '',
-    cedulaProfesional: datos.cedula_profesional || '', evidencia: null,
+    cedulaProfesional: datos.cedula_profesional || '',
+    mostrarProductosDirectorio: Boolean(datos.mostrar_productos_directorio),
+    evidencia: null,
     calle: '', numeroExterior: '', colonia: '', municipio: '', estado: '', direccionManual: false,
   };
 }
@@ -164,6 +166,7 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
     try {
       const body = new FormData();
       for (const campo of campos) body.append(campo, texto(form[campo]));
+      body.append('mostrarProductosDirectorio', form.mostrarProductosDirectorio ? 'true' : 'false');
       body.append('version', actual.version);
       if (form.evidencia) body.append('evidencia', form.evidencia);
       const respuesta = await fetch(`/api/propietario/sucursales/${idSucursal}`, {
@@ -288,6 +291,15 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
           </label>
           <label className="form-field form-field-full"><span>Descripción</span>
             <textarea name="descripcion" value={form.descripcion} onChange={cambiar} maxLength={2000} rows={4} />
+          </label>
+          <label className="form-field form-field-full" style={{ flexDirection: 'row', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(form.mostrarProductosDirectorio)}
+              onChange={(e) => setForm(anterior => ({ ...anterior, mostrarProductosDirectorio: e.target.checked }))}
+              style={{ width: '20px', height: '20px' }}
+            />
+            <span>Mostrar pestaña de <strong>Productos en venta</strong> dentro de mi ficha pública en el Directorio</span>
           </label>
           <div className="form-field-full owner-edit-address">
             <h4>Dirección y ubicación</h4>

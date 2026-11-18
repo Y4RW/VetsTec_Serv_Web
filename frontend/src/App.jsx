@@ -10,22 +10,26 @@ import LoginPage from './pages/LoginPage';
 import PanelPage from './pages/PanelPage';
 import NotFoundPage from './pages/NotFoundPage';
 import AdminModule from './admin/AdminModule';
+import VetStecChatbot from './components/VetStecChatbot';
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/admin/*" element={<AdminModule />} />
-      <Route element={<AuthProvider><PublicLayout /></AuthProvider>}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/directorio" element={<DirectoryPage />} />
-        <Route path="/contacto" element={<ContactPage />} />
-        <Route path="/acceso" element={<LoginPage />} />
-        <Route path="/registro" element={<RegisterPage />} />
-        <Route element={<RequireSession />}>
-          <Route path="/panel" element={<PanelPage />} />
+    <>
+      <Routes>
+        <Route path="/admin/*" element={<AdminModule />} />
+        <Route element={<AuthProvider><PublicLayout /></AuthProvider>}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/directorio" element={<DirectoryPage />} />
+          <Route path="/contacto" element={<ContactPage />} />
+          <Route path="/acceso" element={<LoginPage />} />
+          <Route path="/registro" element={<RegisterPage />} />
+          <Route element={<RequireSession />}>
+            <Route path="/panel" element={<PanelPage />} />
+          </Route>
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+      </Routes>
+      <VetStecChatbot />
+    </>
   );
 }

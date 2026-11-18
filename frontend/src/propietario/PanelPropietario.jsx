@@ -320,9 +320,9 @@ export default function PanelPropietario() {
                     disabled={guardando}
                     onClick={() => {
                       setCitas(false);
-                      setPersonal(false);
+                      setServicios(false);
                       setProductos(false);
-                      setServicios(abierto => !abierto);
+                      setPersonal(abierto => !abierto);
                     }}
                   >
                     {personal

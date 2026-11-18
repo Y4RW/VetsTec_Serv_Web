@@ -28,6 +28,13 @@ const transiciones = {
   ],
 };
 
+function buildWhatsAppCliente(rawPhone, text) {
+  const digits = String(rawPhone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  const mxPhone = digits.length === 10 ? `52${digits}` : digits;
+  return `https://wa.me/${mxPhone}?text=${encodeURIComponent(text)}`;
+}
+
 async function pedir(url, opciones = {}) {
   const r = await fetch(url, {
     credentials: 'same-origin',
@@ -612,6 +619,21 @@ export default function CitasSucursal({
                             </button>
                           </>
                         )}
+
+                        {s.telefono && (
+                          <a
+                            className="owner-whatsapp-link"
+                            href={buildWhatsAppCliente(
+                              s.telefono,
+                              `Hola, te escribimos de la clínica veterinaria sobre la solicitud de cita #${s.id} para *${s.nombre_mascota}* el *${s.fecha}* a las *${s.hora.slice(0, 5)}*.`
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`Enviar WhatsApp sobre solicitud #${s.id} de ${s.nombre_mascota}`}
+                          >
+                            💬 WhatsApp
+                          </a>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -737,6 +759,21 @@ export default function CitasSucursal({
                               {etiqueta}
                             </button>
                           )
+                        )}
+
+                        {c.telefono_celular && (
+                          <a
+                            className="owner-whatsapp-link"
+                            href={buildWhatsAppCliente(
+                              c.telefono_celular,
+                              `Hola ${c.nombre_dueno || ''}, te contactamos respecto a la cita #${c.id} de *${c.nombre_mascota || 'tu mascota'}* (${c.nombre_servicio || 'consulta'}) programada a las *${c.hora}*.`
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`Enviar WhatsApp a ${c.nombre_dueno || 'cliente'} sobre cita #${c.id}`}
+                          >
+                            💬 WhatsApp
+                          </a>
                         )}
                       </td>
                     </tr>
