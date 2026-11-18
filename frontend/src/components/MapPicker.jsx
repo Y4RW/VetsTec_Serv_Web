@@ -27,6 +27,12 @@ export default function MapPicker({
 
   const [seleccionado, setSeleccionado] = useState(valido);
 
+  const [coordsTexto, setCoordsTexto] = useState(
+    valido
+      ? `${Number(initialLat).toFixed(5)}, ${Number(initialLng).toFixed(5)}`
+      : ''
+  );
+
   useEffect(() => {
     const anterior = document.activeElement;
     const overflow = document.body.style.overflow;
@@ -75,12 +81,16 @@ export default function MapPicker({
       title: 'Ubicación del establecimiento',
     }).addTo(instancia);
 
-    marker.current.on('dragend', () => {
+  marker.current.on('dragend', () => {
+      const p = marker.current.getLatLng().wrap();
+      setCoordsTexto(`${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`);
       setSeleccionado(true);
     });
 
     instancia.on('click', (e) => {
       marker.current.setLatLng(e.latlng);
+      const p = e.latlng.wrap();
+      setCoordsTexto(`${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`);
       setSeleccionado(true);
     });
 
@@ -168,17 +178,26 @@ export default function MapPicker({
           aria-label="Mapa del establecimiento"
         />
 
-        <div className="map-modal-actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              marker.current.setLatLng(map.current.getCenter());
-              setSeleccionado(true);
-            }}
-          >
-            Marcar centro del mapa
-          </button>
+    <p className="sr-only" aria-live="polite">
+              {coordsTexto
+                ? `Coordenadas marcadas: ${coordsTexto}`
+                : 'Aún no hay coordenadas marcadas en el mapa.'}
+            </p>
+
+            <div className="map-modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  const centroActual = map.current.getCenter();
+                  marker.current.setLatLng(centroActual);
+                  const p = centroActual.wrap();
+                  setCoordsTexto(`${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`);
+                  setSeleccionado(true);
+                }}
+              >
+                Marcar centro del mapa
+              </button>
 
           <button
             type="button"

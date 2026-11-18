@@ -17,10 +17,16 @@ export default function PublicLayout() {
 
   const closeMenu = () => setMenuOpen(false);
 
+  function handleHeaderKeyDown(e) {
+    if (e.key === 'Escape' && menuOpen) {
+      setMenuOpen(false);
+    }
+  }
+
   return (
-    <div className="site-shell">
+    <div className="site-shell" onKeyDown={handleHeaderKeyDown}>
       <a className="skip-link" href="#contenido-principal">
-        Saltar al contenido
+        Saltar al contenido principal
       </a>
 
       <header className="public-header">
@@ -60,7 +66,7 @@ export default function PublicLayout() {
         </div>
       </header>
 
-      <main id="contenido-principal">
+    <main id="contenido-principal" tabIndex="-1">
         <Outlet />
       </main>
 

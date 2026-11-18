@@ -14,6 +14,8 @@ const fs = require("fs");
 const path = require("path");
 const YAML = require("yaml");
 const swaggerUi = require("swagger-ui-express");
+const helmet = require('helmet');
+const morgan = require('morgan');
 const { cuentaVerificadaSQL } = require('./lib/cuentasEstablecimiento');
 
 const {
@@ -87,9 +89,16 @@ const emailTransporter = nodemailer.createTransport({
    MIDDLEWARES
    ========================================================= */
 
+app.use(helmet({
+  contentSecurityPolicy: false, // Evita conflictos con Swagger UI y mapas de Leaflet
+}));
+app.use(morgan('combined'));
+
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  'http://localhost:8080',
+  'http://127.0.0.1:8080',
   ...(process.env.FRONTEND_URL
     ? [new URL(process.env.FRONTEND_URL).origin]
     : []),
@@ -98,38 +107,19 @@ const allowedOrigins = [
 app.use(
   cors({
     origin(origin, callback) {
-      // Permite peticiones sin origin:
-      // Postman, Thunder Client, navegador directo, etc.
-      if (!origin) {
+      if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(
-        new Error('Origen no permitido por CORS')
-      );
+      const err = new Error('Origen no permitido por CORS');
+      err.status = 403;
+      return callback(err);
     },
-    methods: [
-      'GET',
-      'POST',
-      'PUT',
-      'PATCH',
-      'DELETE',
-      'OPTIONS',
-    ],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Requested-With',
-      'Accept',
-    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 require('./routes/geocodificacion')(app, axios);
 
@@ -878,21 +868,21 @@ app.post('/api/solicitudes-cita', async (req, res) => {
       horarioResult.rows[0];
 
     const dentroDelHorario =
-      await client.query(
-        `
-          SELECT
-            (
-              $1::time >= $2::time
-              AND
-              $1::time < $3::time
-            ) AS valido
-        `,
-        [
-          hora,
-          horario.hora_apertura,
-          horario.hora_cierre,
-        ]
-      );
+          await client.query(
+            `
+              SELECT
+                (
+                  $1::time >= $2::time
+                  AND
+                  ($1::time + INTERVAL '60 minutes') <= $3::time
+                ) AS valido
+            `,
+            [
+              hora,
+              horario.hora_apertura,
+              horario.hora_cierre,
+            ]
+          );
 
     if (!dentroDelHorario.rows[0].valido) {
       await client.query('ROLLBACK');
@@ -1616,18 +1606,47 @@ app.use('/api', (req, res) => {
 });
 
 /* =========================================================
+   FRONTEND COMPILADO (REACT + VITE)
+   ========================================================= */
+
+const frontendDistPath = path.join(__dirname, 'frontend', 'dist');
+
+app.use(express.static(frontendDistPath));
+
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
+
+/* =========================================================
    MANEJO GENERAL DE ERRORES
    ========================================================= */
 
 app.use((error, req, res, next) => {
-  console.error(
-    'Error interno:',
-    error.message
-  );
+  if (error?.name === 'MulterError') {
+    const esPeso = error.code === 'LIMIT_FILE_SIZE';
+    return res.status(esPeso ? 413 : 400).json({
+      success: false,
+      message: esPeso
+        ? 'El archivo excede el tamaño máximo permitido de 5 MB.'
+        : 'Error al procesar los archivos adjuntos.',
+    });
+  }
 
-  res.status(500).json({
+  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+    return res.status(400).json({
+      success: false,
+      message: 'El cuerpo JSON de la petición tiene un formato inválido.',
+    });
+  }
+
+  const status = error.status || 500;
+  if (status >= 500) {
+    console.error('Error interno:', error.message);
+  }
+
+  return res.status(status).json({
     success: false,
-    message: 'Error interno del servidor',
+    message: status < 500 ? error.message : 'Error interno del servidor.',
   });
 });
 
