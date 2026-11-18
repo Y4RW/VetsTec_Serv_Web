@@ -74,7 +74,7 @@ const supabase = createClient(
 
 const PORT = process.env.PORT || 3000;
 
-const emailTransporter = nodemailer.createTransport({
+const smtpTransporter = nodemailer.createTransport({
   service: "gmail",
   connectionTimeout: 10000,
   greetingTimeout: 10000,
@@ -84,6 +84,35 @@ const emailTransporter = nodemailer.createTransport({
     pass: process.env.EMAIL_APP_PASSWORD,
   },
 });
+
+const emailTransporter = {
+  async sendMail({ from, to, subject, text, html }) {
+    if (process.env.BREVO_API_KEY) {
+      const senderEmail = process.env.EMAIL_USER || "no-reply@vetstec.com";
+      const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "api-key": process.env.BREVO_API_KEY,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: "VetStec", email: senderEmail },
+          to: [{ email: String(to).trim() }],
+          subject,
+          textContent: text,
+          ...(html ? { htmlContent: html } : {}),
+        }),
+      });
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => "");
+        throw new Error(`Brevo API error (${resp.status}): ${errBody}`);
+      }
+      return resp.json();
+    }
+    return smtpTransporter.sendMail({ from, to, subject, text, html });
+  },
+};
 
 /* =========================================================
    MIDDLEWARES
