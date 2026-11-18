@@ -366,20 +366,58 @@ app.get('/api/establecimientos', async (req, res) => {
         n.logo_url,
         n.latitud,
         n.longitud,
+        COALESCE(n.mostrar_productos_directorio, FALSE) AS mostrar_productos_directorio,
 
         COALESCE(
           json_agg(
-            json_build_object(
+            DISTINCT jsonb_build_object(
               'dia_semana', h.dia_semana,
               'hora_apertura', h.hora_apertura,
               'hora_cierre', h.hora_cierre,
               'cerrado', h.cerrado
             )
-            ORDER BY h.dia_semana
           )
           FILTER (WHERE h.id IS NOT NULL),
           '[]'::json
-        ) AS horarios
+        ) AS horarios,
+
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', s.id,
+                'nombre', s.nombre_servicio,
+                'tipo', s.tipo_servicio,
+                'duracion_min', s.tiempo_estimado_minutos,
+                'precio', s.precio_base
+              )
+              ORDER BY s.nombre_servicio ASC
+            )
+            FROM public.servicios s
+            WHERE s.id_negocio = n.id
+          ),
+          '[]'::json
+        ) AS servicios,
+
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', p.id,
+                'nombre', p.nombre_producto,
+                'tipo_uso', p.tipo_uso,
+                'precio', p.precio_venta,
+                'stock', p.stock_actual
+              )
+              ORDER BY p.nombre_producto ASC
+            )
+            FROM public.productos p
+            WHERE p.id_negocio = n.id
+              AND n.mostrar_productos_directorio = TRUE
+              AND p.stock_actual > 0
+          ),
+          '[]'::json
+        ) AS productos
 
       FROM configuracion_negocio n
 

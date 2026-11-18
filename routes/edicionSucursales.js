@@ -35,7 +35,7 @@ module.exports = function registrarEdicionSucursales(app, {
   const detalleSQL = `
     SELECT n.id, n.nombre_establecimiento, n.tipo_servicio, n.telefono_whatsapp,
       n.correo_contacto, n.descripcion, n.direccion, n.codigo_postal, n.latitud, n.longitud,
-      n.activo_directorio, v.estado, v.nombre_responsable, v.cedula_profesional,
+      n.activo_directorio, n.mostrar_productos_directorio, v.estado, v.nombre_responsable, v.cedula_profesional,
       v.foto_establecimiento_url, v.motivo_rechazo, v.observaciones_revision,
       v.fecha_solicitud, v.fecha_revision
     FROM public.configuracion_negocio n
@@ -59,7 +59,7 @@ module.exports = function registrarEdicionSucursales(app, {
 
   const recibir = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 12, parts: 13, fieldSize: 12000 },
+    limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 15, parts: 16, fieldSize: 12000 },
     fileFilter: (req, file, cb) => cb(['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)
       ? null : fallo(400, 'La fotografía debe ser JPG, PNG o WEBP.'), true),
   }).fields([{ name: 'evidencia', maxCount: 1 }]);
@@ -92,7 +92,7 @@ module.exports = function registrarEdicionSucursales(app, {
         if (!idValido(req.params.idSucursal)) throw fallo(400, 'Sucursal inválida.');
         const permitidos = ['version', 'nombreEstablecimiento', 'tipoServicio', 'telefonoWhatsapp',
           'correoContacto', 'descripcion', 'direccion', 'codigoPostal', 'latitud', 'longitud',
-          'nombreResponsable', 'cedulaProfesional'];
+          'nombreResponsable', 'cedulaProfesional', 'mostrarProductosDirectorio'];
         if (Object.keys(req.body || {}).some(campo => !permitidos.includes(campo)) ||
             typeof req.body?.version !== 'string' || !/^[a-f0-9]{64}$/.test(req.body.version)) {
           throw fallo(400, 'Solicitud inválida. Vuelve a abrir la edición desde el panel.');
@@ -137,8 +137,10 @@ module.exports = function registrarEdicionSucursales(app, {
         if (archivo && d.tipoServicio !== 'ESTETICA') throw fallo(400, 'La fotografía de esta edición corresponde a una estética canina.');
         const requisitosCambiados = texto(actual.nombre_responsable) !== d.nombreResponsable ||
           texto(actual.cedula_profesional) !== d.cedulaProfesional || Boolean(archivo);
+        const mostrarProductos = req.body.mostrarProductosDirectorio === 'true' || req.body.mostrarProductosDirectorio === true;
         const contactoCambiado = texto(actual.telefono_whatsapp) !== d.telefonoWhatsapp ||
-          texto(actual.correo_contacto).toLowerCase() !== d.correoContacto || texto(actual.descripcion) !== d.descripcion;
+          texto(actual.correo_contacto).toLowerCase() !== d.correoContacto || texto(actual.descripcion) !== d.descripcion ||
+          Boolean(actual.mostrar_productos_directorio) !== mostrarProductos;
         const hayCambios = identidadCambiada || requisitosCambiados || contactoCambiado;
         const requiereRevision = hayCambios && (identidadCambiada || requisitosCambiados || actual.estado === 'RECHAZADO');
 
@@ -159,14 +161,15 @@ module.exports = function registrarEdicionSucursales(app, {
           const escritura = await client.query(`
             UPDATE public.configuracion_negocio SET nombre_establecimiento = $2, tipo_servicio = $3,
               telefono_whatsapp = $4, correo_contacto = $5, descripcion = $6,
-              direccion = $7, codigo_postal = $8, latitud = $9, longitud = $10, activo_directorio = $11
+              direccion = $7, codigo_postal = $8, latitud = $9, longitud = $10, activo_directorio = $11,
+              mostrar_productos_directorio = $14
             WHERE id = $1 AND EXISTS (SELECT 1 FROM public.redes_sucursales s
               JOIN public.redes_propietarios p ON p.id_red = s.id_red
               WHERE s.id_negocio = $1 AND s.id_red = $12 AND p.id_usuario = $13 AND p.activo = TRUE)
           `, [id, d.nombreEstablecimiento, d.tipoServicio, d.telefonoWhatsapp, d.correoContacto,
             d.descripcion || null, d.direccion, d.codigoPostal, d.latitud, d.longitud,
             !requiereRevision && actual.estado === 'APROBADO' && actual.activo_directorio,
-            req.propietario.id, req.auth.usuario.id]);
+            req.propietario.id, req.auth.usuario.id, mostrarProductos]);
           if (escritura.rowCount !== 1) throw fallo(404, 'Sucursal no encontrada.');
           if (requiereRevision) {
             // El historial de decisiones anteriores se conserva en historial_revision_negocio.

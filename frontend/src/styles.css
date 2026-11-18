@@ -24,9 +24,24 @@
   --container: 1180px;
 }
 
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: #f7fafc; color: var(--ink); }
+*, *::before, *::after { box-sizing: border-box; }
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: clip;
+  scrollbar-gutter: stable;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100dvh;
+  overflow-x: clip;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: #f7fafc;
+  color: var(--ink);
+}
+img, svg, video, canvas, iframe { max-width: 100%; }
 a { color: inherit; }
 button, input, textarea, select { font: inherit; }
 
@@ -2957,4 +2972,447 @@ textarea::placeholder {
   padding: 8px 12px;
   text-decoration: underline;
   text-underline-offset: 4px;
+}
+
+/* =========================================================
+   COMPATIBILIDAD MULTIPLATAFORMA (Windows, Linux, Android, iOS)
+   ========================================================= */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important; /* Evita auto-zoom en Safari iOS */
+  }
+
+  .hero-grid,
+  .about-grid,
+  .professional-grid,
+  .contact-grid,
+  .directory-search-panel,
+  .modal-content-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(2.1rem, 9.5vw, 3.2rem);
+    overflow-wrap: break-word;
+  }
+
+  .establishment-modal {
+    max-height: 92dvh;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+
+  .public-footer {
+    padding-bottom: calc(34px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* =========================================================
+   INTEGRACIÓN WHATSAPP Y CATÁLOGO EN DIRECTORIO (WCAG AA)
+   ========================================================= */
+.establishment-card-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.establishment-card-actions .establishment-button {
+  margin-top: 0;
+}
+
+.establishment-whatsapp-btn,
+.button-whatsapp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 12px;
+  background: #128c55;
+  color: #ffffff;
+  font-weight: 750;
+  text-decoration: none;
+  border: 1px solid #0e7245;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.establishment-whatsapp-btn:hover,
+.button-whatsapp:hover {
+  background: #0d6e43;
+  transform: translateY(-1px);
+}
+
+.catalog-preview-section {
+  padding: 28px 32px;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
+  display: grid;
+  gap: 24px;
+}
+
+.catalog-block h3 {
+  margin: 0 0 14px;
+  color: var(--navy-dark);
+  font-size: 1.2rem;
+}
+
+.catalog-items-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.catalog-item-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #d7e3ee;
+  border-radius: 14px;
+  background: #f8fbfd;
+}
+
+.catalog-item-card strong {
+  display: block;
+  color: var(--navy-dark);
+  font-size: 0.96rem;
+}
+
+.catalog-item-card small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.catalog-price {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #e6f6f5;
+  color: #075e5c;
+  font-weight: 800;
+  font-size: 0.88rem;
+}
+
+.success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+@media (max-width: 700px) {
+  .catalog-preview-section {
+    padding: 22px 20px;
+  }
+
+  .catalog-items-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .success-actions .button {
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   WHATSAPP EN PANEL PROPIETARIO Y CHATBOTS DUALES (WCAG AA)
+   ========================================================= */
+.owner-whatsapp-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  margin-left: 6px;
+  border-radius: 10px;
+  background: #128c55;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.owner-whatsapp-link:hover {
+  background: #0d6e43;
+}
+
+.vetstec-chatbot {
+  position: fixed;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.chatbot-launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: linear-gradient(135deg, #102a43 0%, #0b8783 100%);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.95rem;
+  box-shadow: 0 14px 30px rgba(16, 42, 67, 0.28);
+  cursor: pointer;
+}
+
+.vetstec-chatbot.is-owner .chatbot-launcher {
+  background: linear-gradient(135deg, #1b365d 0%, #2b6cb0 100%);
+}
+
+.chatbot-window {
+  width: min(370px, calc(100vw - 28px));
+  max-height: min(540px, calc(100dvh - 100px));
+  background: #ffffff;
+  border: 1px solid #cbd9e6;
+  border-radius: 20px;
+  box-shadow: 0 22px 48px rgba(16, 42, 67, 0.26);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chatbot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #102a43;
+  color: #ffffff;
+}
+
+.vetstec-chatbot.is-owner .chatbot-header {
+  background: #1b365d;
+}
+
+.chatbot-header-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chatbot-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16);
+  display: grid;
+  place-items: center;
+  font-size: 1.2rem;
+}
+
+.chatbot-badge {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8ee3df;
+  font-weight: 800;
+}
+
+.chatbot-header h3 {
+  margin: 2px 0 0;
+  font-size: 1rem;
+  color: #ffffff;
+}
+
+.chatbot-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+
+.chatbot-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f5f9fc;
+}
+
+.chatbot-bubble {
+  max-width: 86%;
+  padding: 11px 14px;
+  border-radius: 14px;
+  font-size: 0.92rem;
+  line-height: 1.48;
+}
+
+.chatbot-bubble p {
+  margin: 0;
+}
+
+.chatbot-bubble.bot {
+  align-self: flex-start;
+  background: #ffffff;
+  color: #102a43;
+  border: 1px solid #d7e3ee;
+}
+
+.chatbot-bubble.user {
+  align-self: flex-end;
+  background: #0b8783;
+  color: #ffffff;
+}
+
+.chatbot-action-btn {
+  margin-top: 8px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid #0b8783;
+  background: #e6f6f5;
+  color: #075e5c;
+  font-weight: 750;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.chatbot-quick-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border-top: 1px solid #e2ecf4;
+}
+
+.chatbot-quick-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #cbd9e6;
+  background: #f8fbfd;
+  color: #102a43;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chatbot-quick-chip:hover {
+  background: #e6f6f5;
+  border-color: #0b8783;
+}
+
+.chatbot-form {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border-top: 1px solid #e2ecf4;
+}
+
+.chatbot-form input {
+  flex: 1;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #cbd9e6;
+  font-size: 16px;
+}
+
+.chatbot-form button {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: none;
+  background: #102a43;
+  color: #ffffff;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+/* =========================================================
+   PESTAÑAS DEL MODAL DEL DIRECTORIO (SERVICIOS / CITAS / PRODUCTOS)
+   ========================================================= */
+.modal-tabs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 32px 0;
+  border-top: 1px solid var(--line);
+  background: #f8fbfd;
+}
+
+.modal-tab-btn {
+  min-height: 46px;
+  padding: 10px 18px;
+  border-radius: 12px 12px 0 0;
+  border: 1px solid #d7e3ee;
+  border-bottom: none;
+  background: #eef4f9;
+  color: #102a43;
+  font-weight: 750;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.modal-tab-btn:hover {
+  background: #e1ecf5;
+}
+
+.modal-tab-btn.active {
+  background: #ffffff;
+  color: #075e5c;
+  border-color: #0b8783;
+  box-shadow: inset 0 3px 0 #0b8783;
+}
+
+.modal-tab-panel {
+  padding: 28px 32px 32px;
+  background: #ffffff;
+  border-top: 1px solid #d7e3ee;
+}
+
+.modal-tab-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.modal-tab-panel-head h3 {
+  margin: 0 0 4px;
+  color: var(--navy-dark);
+}
+
+.modal-tab-panel-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+  .modal-tabs-bar {
+    padding: 14px 16px 0;
+  }
+
+  .modal-tab-btn {
+    flex: 1 1 auto;
+    padding: 10px 12px;
+    font-size: 0.88rem;
+  }
+
+  .modal-tab-panel {
+    padding: 22px 18px 26px;
+  }
 }
