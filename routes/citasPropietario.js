@@ -671,11 +671,13 @@ module.exports = function registrarCitas(app, {
             throw fallo(400, 'Cita inválida.');
           }
 
-          const cita = (await db.query(`
+const cita = (await db.query(`
             SELECT
               *,
+              (fecha_hora_programada - INTERVAL '15 minutes') <=
+                CURRENT_TIMESTAMP::timestamp AS puede_iniciar,
               fecha_hora_programada <=
-                CURRENT_TIMESTAMP::timestamp AS puede_iniciar
+                CURRENT_TIMESTAMP::timestamp AS puede_retrasar
             FROM public.citas
             WHERE id=$1 AND id_negocio=$2
             FOR UPDATE
@@ -704,11 +706,12 @@ module.exports = function registrarCitas(app, {
             throw fallo(409, 'Cambio de estado no permitido.');
           }
 
-          if (
-            ['RETRASADA', 'EN_PROCESO'].includes(d.estado) &&
-            !cita.puede_iniciar
-          ) {
-            throw fallo(409, 'Todavía no llega la hora programada.');
+          if (d.estado === 'RETRASADA' && !cita.puede_retrasar) {
+            throw fallo(409, 'La cita aún no supera su hora programada.');
+          }
+
+          if (d.estado === 'EN_PROCESO' && !cita.puede_iniciar) {
+            throw fallo(409, 'Solo puedes iniciar la atención hasta 15 minutos antes de la hora programada.');
           }
 
           if (d.estado === 'EN_PROCESO') {

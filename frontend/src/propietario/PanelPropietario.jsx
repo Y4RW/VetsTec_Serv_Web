@@ -264,6 +264,7 @@ export default function PanelPropietario() {
                   <button
                     type="button"
                     className="button button-primary"
+                    aria-expanded={productos}
                     disabled={guardando}
                     onClick={() => {
                       setCitas(false);
@@ -289,6 +290,7 @@ export default function PanelPropietario() {
                   <button
                     type="button"
                     className="button button-secondary"
+                    aria-expanded={servicios}
                     disabled={guardando}
                     onClick={() => {
                       setCitas(false);
@@ -314,6 +316,7 @@ export default function PanelPropietario() {
                   <button
                     type="button"
                     className="button button-secondary"
+                    aria-expanded={personal}
                     disabled={guardando}
                     onClick={() => {
                       setCitas(false);
@@ -339,6 +342,7 @@ export default function PanelPropietario() {
                   <button
                     type="button"
                     className="button button-secondary"
+                    aria-expanded={citas}
                     disabled={guardando}
                     onClick={() => {
                       setProductos(false);

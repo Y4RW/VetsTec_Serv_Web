@@ -555,13 +555,16 @@ export default function CitasSucursal({
           ) : (
             <div className="owner-table-wrap">
               <table>
+                <caption className="sr-only">
+                  Solicitudes públicas de cita para el {datos.fecha}
+                </caption>
                 <thead>
                   <tr>
-                    <th>Hora / ID</th>
-                    <th>Mascota</th>
-                    <th>Teléfono</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
+                    <th scope="col">Hora / ID</th>
+                    <th scope="col">Mascota</th>
+                    <th scope="col">Teléfono</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Acciones</th>
                   </tr>
                 </thead>
 
@@ -587,6 +590,7 @@ export default function CitasSucursal({
                             <button
                               type="button"
                               disabled={bloqueado}
+                              aria-label={`Confirmar solicitud #${s.id} de ${s.nombre_mascota}`}
                               onClick={() => confirmar(s)}
                             >
                               Confirmar
@@ -595,6 +599,7 @@ export default function CitasSucursal({
                             <button
                               type="button"
                               disabled={bloqueado}
+                              aria-label={`Rechazar solicitud #${s.id} de ${s.nombre_mascota}`}
                               onClick={() => {
                                 if (window.confirm(
                                   `¿Rechazar la solicitud #${s.id}?`
@@ -642,13 +647,16 @@ export default function CitasSucursal({
           ) : (
             <div className="owner-table-wrap">
               <table>
+                <caption className="sr-only">
+                  Agenda de citas programadas para el {datos.fecha}
+                </caption>
                 <thead>
                   <tr>
-                    <th>Hora / ID</th>
-                    <th>Cliente y mascota</th>
-                    <th>Servicio / empleado</th>
-                    <th>Estado y tiempo</th>
-                    <th>Acciones</th>
+                    <th scope="col">Hora / ID</th>
+                    <th scope="col">Cliente y mascota</th>
+                    <th scope="col">Servicio / empleado</th>
+                    <th scope="col">Estado y tiempo</th>
+                    <th scope="col">Acciones</th>
                   </tr>
                 </thead>
 
@@ -698,6 +706,7 @@ export default function CitasSucursal({
                           <button
                             type="button"
                             disabled={bloqueado}
+                            aria-label={`Editar o reprogramar cita #${c.id} de ${c.nombre_mascota || 'mascota'}`}
                             onClick={() => setForm({
                               ...vacio(c.fecha),
                               ...c,
@@ -713,6 +722,7 @@ export default function CitasSucursal({
                               type="button"
                               key={estado}
                               disabled={bloqueado}
+                              aria-label={`${etiqueta} cita #${c.id} de ${c.nombre_mascota || 'mascota'}`}
                               onClick={() => {
                                 if (window.confirm(
                                   `¿${etiqueta} la cita #${c.id}?`

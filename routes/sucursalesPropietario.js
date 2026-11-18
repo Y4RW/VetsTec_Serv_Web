@@ -75,7 +75,7 @@ module.exports = function registrarSucursales(app, {
   });
 
   app.post('/api/propietario/sucursales', requireSesionConArchivos, requirePropietario,
-    archivos, requireSesionConArchivos, async (req, res) => {
+      archivos, async (req, res) => {
       let client;
       let confirmada = false;
       let commitIniciado = false;

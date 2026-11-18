@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 /* =========================================================
    UTILIDADES
@@ -114,6 +114,9 @@ export default function DirectoryPage() {
 
   const [requestSending, setRequestSending] =
   useState(false);
+
+  const modalCloseRef = useRef(null);
+  const lastTriggerRef = useRef(null);
 
   /* =========================================================
      CARGAR DIRECTORIO DESDE NODE.JS
@@ -283,7 +286,10 @@ export default function DirectoryPage() {
     setType('Todas');
   }
 
-  async function openEstablishment(item) {
+async function openEstablishment(item, triggerElement = null) {
+    if (triggerElement) {
+      lastTriggerRef.current = triggerElement;
+    }
     setSelectedEstablishment(item);
 
     setSelectedDay(null);
@@ -342,6 +348,9 @@ export default function DirectoryPage() {
 
   function closeModal() {
     setSelectedEstablishment(null);
+    requestAnimationFrame(() => {
+      lastTriggerRef.current?.focus();
+    });
   }
 
   function selectDay(day) {
@@ -468,33 +477,35 @@ export default function DirectoryPage() {
       return;
     }
 
-    function handleEscape(event) {
-      if (event.key === 'Escape') {
-        closeModal();
+  modalCloseRef.current?.focus();
+
+      function handleEscape(event) {
+        if (event.key === 'Escape') {
+          closeModal();
+        }
       }
-    }
 
-    document.addEventListener(
-      'keydown',
-      handleEscape
-    );
-
-    document.body.style.overflow =
-      'hidden';
-
-    return () => {
-      document.removeEventListener(
+      document.addEventListener(
         'keydown',
         handleEscape
       );
 
       document.body.style.overflow =
-        '';
-    };
-  }, [selectedEstablishment]);
+        'hidden';
 
-  return (
-    <main>
+      return () => {
+        document.removeEventListener(
+          'keydown',
+          handleEscape
+        );
+
+        document.body.style.overflow =
+          '';
+      };
+    }, [selectedEstablishment]);
+
+    return (
+      <div className="directory-page">
       <section className="directory-hero">
         <div className="container">
           <span className="eyebrow">
@@ -637,7 +648,7 @@ export default function DirectoryPage() {
 
               {!loading &&
                 !loadError && (
-                  <p>
+                  <p aria-live="polite">
                     {
                       filteredEstablishments.length
                     }{' '}
@@ -776,9 +787,10 @@ export default function DirectoryPage() {
                         <button
                           type="button"
                           className="establishment-button"
-                          onClick={() =>
+                        onClick={(e) =>
                             openEstablishment(
-                              item
+                              item,
+                              e.currentTarget
                             )
                           }
                         >
@@ -850,10 +862,11 @@ export default function DirectoryPage() {
             aria-labelledby="establishment-modal-title"
           >
             <button
+              ref={modalCloseRef}
               type="button"
               className="modal-close-button"
               onClick={closeModal}
-              aria-label="Cerrar información"
+              aria-label="Cerrar información del establecimiento"
             >
               ×
             </button>
@@ -1000,14 +1013,26 @@ export default function DirectoryPage() {
               </div>
 
               <div className="modal-map">
-                <iframe
-                  title={`Ubicación de ${selectedEstablishment.name}`}
-                  src={`https://www.google.com/maps?q=${encodeURIComponent(
-                    selectedEstablishment.address
-                  )}&output=embed`}
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
+                {(() => {
+                  const hasCoords =
+                    selectedEstablishment.latitude != null &&
+                    selectedEstablishment.longitude != null &&
+                    selectedEstablishment.latitude !== '' &&
+                    selectedEstablishment.longitude !== '';
+                  const mapQuery = hasCoords
+                    ? `${selectedEstablishment.latitude},${selectedEstablishment.longitude}`
+                    : selectedEstablishment.address;
+                  return (
+                    <iframe
+                      title={`Ubicación en mapa de ${selectedEstablishment.name}`}
+                      src={`https://www.google.com/maps?q=${encodeURIComponent(
+                        mapQuery
+                      )}&output=embed`}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
+                  );
+                })()}
               </div>
             </div>
 
@@ -1095,6 +1120,7 @@ export default function DirectoryPage() {
                           key={day.date}
                           type="button"
                           disabled={day.status === 'full'}
+                          aria-pressed={selectedDay?.date === day.date}
                           className={`availability-day ${day.status} ${
                             selectedDay?.date === day.date
                               ? 'selected'
@@ -1161,6 +1187,7 @@ export default function DirectoryPage() {
                                 slot
                               }
                               type="button"
+                              aria-pressed={selectedTime === slot}
                               className={
                                 selectedTime ===
                                 slot
@@ -1394,6 +1421,7 @@ export default function DirectoryPage() {
           </section>
         </div>
       )}
-    </main>
+      
+    </div>
   );
 }
