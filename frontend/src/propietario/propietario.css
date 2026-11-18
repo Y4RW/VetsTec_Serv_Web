@@ -183,6 +183,10 @@
   }
 }
 
+.owner-detail {
+  min-width: 0;
+}
+
 .owner-detail-header {
   display: flex;
   flex-wrap: wrap;
@@ -201,11 +205,18 @@
   color: var(--muted, #52627a);
 }
 
+.owner-nav-wrapper {
+  margin: 16px 0 18px;
+}
+
+.owner-mobile-toggle {
+  display: none;
+}
+
 .owner-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 16px 0 18px;
   padding-bottom: 10px;
   border-bottom: 2px solid var(--line, #dce5f2);
 }
@@ -235,12 +246,14 @@
   color: #ffffff;
 }
 
-.owner-tab:focus-visible {
+.owner-tab:focus-visible,
+.owner-mobile-toggle:focus-visible {
   outline: 3px solid #18b7b5;
   outline-offset: 2px;
 }
 
-.owner-tab:disabled {
+.owner-tab:disabled,
+.owner-mobile-toggle:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -249,16 +262,75 @@
   min-width: 0;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 700px) {
+  .owner-mobile-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 1.5px solid var(--navy, #173b72);
+    border-radius: 12px;
+    background: #f5f8fc;
+    color: var(--navy-dark, #132b52);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .owner-mobile-toggle-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .owner-mobile-toggle-text small {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted, #52627a);
+  }
+
+  .owner-mobile-toggle-text strong {
+    font-size: 1rem;
+    color: var(--navy-dark, #132b52);
+  }
+
+  .owner-mobile-toggle-icon {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--navy, #173b72);
+    color: #ffffff;
+    font-size: 1.15rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
   .owner-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 8px;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 10px;
+    border: 1px solid var(--line, #dce5f2);
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(19, 43, 82, 0.1);
+  }
+
+  .owner-tabs.is-open {
+    display: flex;
   }
 
   .owner-tab {
-    flex: 0 0 auto;
-    white-space: nowrap;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    font-size: 0.96rem;
   }
 }
