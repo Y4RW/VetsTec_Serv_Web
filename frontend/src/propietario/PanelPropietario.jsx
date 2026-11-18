@@ -29,6 +29,14 @@ const nombres = {
   VETERINARIA: 'Veterinaria', ESTETICA: 'Estética canina', AMBAS: 'Veterinaria y estética',
 };
 
+const SECCIONES_SUCURSAL = [
+  { id: 'resumen', label: '📋 Datos generales', soloAprobado: false },
+  { id: 'citas', label: '📅 Citas', soloAprobado: true },
+  { id: 'servicios', label: '🩺 Servicios', soloAprobado: true },
+  { id: 'productos', label: '🛍️ Productos', soloAprobado: true },
+  { id: 'personal', label: '👩‍⚕️ Empleados y horarios', soloAprobado: true },
+];
+
 export default function PanelPropietario() {
   const { sesion, comprobarSesion } = useAuth();
   const [datos, setDatos] = useState(null);
@@ -36,6 +44,7 @@ export default function PanelPropietario() {
   const [error, setError] = useState('');
   const [seleccion, setSeleccion] = useState(null);
   const [tabActiva, setTabActiva] = useState('resumen');
+  const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
 
   const [formulario, setFormulario] = useState(false);
   const [edicion, setEdicion] = useState(null);
@@ -45,6 +54,7 @@ export default function PanelPropietario() {
 
   const limpiarProductos = useCallback(() => {
     setTabActiva('resumen');
+    setMenuMovilAbierto(false);
   }, []);
 
   const cargar = useCallback(async (idPreferido = null) => {
@@ -253,70 +263,61 @@ export default function PanelPropietario() {
                 </p>
               )}
 
-              <div
-                className="owner-tabs"
-                role="tablist"
-                aria-label={`Gestión de ${sucursal.nombre_establecimiento}`}
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tabActiva === 'resumen'}
-                  className={`owner-tab ${tabActiva === 'resumen' ? 'is-active' : ''}`}
-                  disabled={guardando}
-                  onClick={() => setTabActiva('resumen')}
-                >
-                  📋 Datos generales
-                </button>
+              {(() => {
+                const seccionesDisponibles = SECCIONES_SUCURSAL.filter(
+                  (sec) => !sec.soloAprobado || sucursal.estado === 'APROBADO'
+                );
+                const seccionActual =
+                  seccionesDisponibles.find((sec) => sec.id === tabActiva) ||
+                  seccionesDisponibles[0];
 
-                {sucursal.estado === 'APROBADO' && (
-                  <>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={tabActiva === 'citas'}
-                      className={`owner-tab ${tabActiva === 'citas' ? 'is-active' : ''}`}
-                      disabled={guardando}
-                      onClick={() => setTabActiva('citas')}
-                    >
-                      📅 Citas
-                    </button>
+                return (
+                  <div className="owner-nav-wrapper">
+                    {seccionesDisponibles.length > 1 && (
+                      <button
+                        type="button"
+                        className="owner-mobile-toggle"
+                        aria-expanded={menuMovilAbierto}
+                        aria-controls={`owner-tabs-${sucursal.id}`}
+                        disabled={guardando}
+                        onClick={() => setMenuMovilAbierto((abierto) => !abierto)}
+                      >
+                        <span className="owner-mobile-toggle-text">
+                          <small>Sección actual</small>
+                          <strong>{seccionActual.label}</strong>
+                        </span>
+                        <span className="owner-mobile-toggle-icon" aria-hidden="true">
+                          {menuMovilAbierto ? '✕' : '☰'}
+                        </span>
+                      </button>
+                    )}
 
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={tabActiva === 'servicios'}
-                      className={`owner-tab ${tabActiva === 'servicios' ? 'is-active' : ''}`}
-                      disabled={guardando}
-                      onClick={() => setTabActiva('servicios')}
+                    <div
+                      id={`owner-tabs-${sucursal.id}`}
+                      className={`owner-tabs ${menuMovilAbierto ? 'is-open' : ''}`}
+                      role="tablist"
+                      aria-label={`Gestión de ${sucursal.nombre_establecimiento}`}
                     >
-                      🩺 Servicios
-                    </button>
-
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={tabActiva === 'productos'}
-                      className={`owner-tab ${tabActiva === 'productos' ? 'is-active' : ''}`}
-                      disabled={guardando}
-                      onClick={() => setTabActiva('productos')}
-                    >
-                      🛍️ Productos
-                    </button>
-
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={tabActiva === 'personal'}
-                      className={`owner-tab ${tabActiva === 'personal' ? 'is-active' : ''}`}
-                      disabled={guardando}
-                      onClick={() => setTabActiva('personal')}
-                    >
-                      👩‍⚕️ Empleados y horarios
-                    </button>
-                  </>
-                )}
-              </div>
+                      {seccionesDisponibles.map((sec) => (
+                        <button
+                          key={sec.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={tabActiva === sec.id}
+                          className={`owner-tab ${tabActiva === sec.id ? 'is-active' : ''}`}
+                          disabled={guardando}
+                          onClick={() => {
+                            setTabActiva(sec.id);
+                            setMenuMovilAbierto(false);
+                          }}
+                        >
+                          {sec.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="owner-tab-panel" role="tabpanel">
                 {tabActiva === 'resumen' && (
