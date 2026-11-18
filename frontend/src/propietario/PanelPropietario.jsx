@@ -35,22 +35,16 @@ export default function PanelPropietario() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [seleccion, setSeleccion] = useState(null);
-  const [productos, setProductos] = useState(false);
-  const [servicios, setServicios] = useState(false);
-  const [personal, setPersonal] = useState(false);
-  const [citas, setCitas] = useState(false);
+  const [tabActiva, setTabActiva] = useState('resumen');
 
-    const [formulario, setFormulario] = useState(false);
-    const [edicion, setEdicion] = useState(null);
-    const [guardando, setGuardando] = useState(false);
-    const [aviso, setAviso] = useState('');
-    const solicitudes = useRef({ resumen: null });
+  const [formulario, setFormulario] = useState(false);
+  const [edicion, setEdicion] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [aviso, setAviso] = useState('');
+  const solicitudes = useRef({ resumen: null });
 
   const limpiarProductos = useCallback(() => {
-    setProductos(false);
-    setServicios(false);
-    setPersonal(false);
-    setCitas(false);
+    setTabActiva('resumen');
   }, []);
 
   const cargar = useCallback(async (idPreferido = null) => {
@@ -238,136 +232,148 @@ export default function PanelPropietario() {
           </div>
           <div className="owner-detail">
             {sucursal ? <>
-              <h3>{sucursal.nombre_establecimiento}</h3>
-              <p>{nombres[sucursal.tipo_servicio] || 'Tipo no especificado'}</p>
-              <dl className="owner-facts">
-                <div><dt>Identificador</dt><dd>{sucursal.id}</dd></div>
-                <div><dt>Revisión</dt><dd>{sucursal.estado}</dd></div>
-                <div><dt>Directorio público</dt><dd>{sucursal.activo_directorio ? 'Visible' : 'No visible'}</dd></div>
-                <div><dt>Teléfono / WhatsApp</dt><dd>{sucursal.telefono_whatsapp || 'Sin dato'}</dd></div>
-                <div><dt>Correo de contacto</dt><dd>{sucursal.correo_contacto || 'Sin dato'}</dd></div>
-                <div><dt>Dirección</dt><dd>{sucursal.direccion || 'Sin dato'}</dd></div>
-                <div><dt>Código postal</dt><dd>{sucursal.codigo_postal || 'Sin dato'}</dd></div>
-                <div><dt>Ubicación</dt><dd>{sucursal.latitud ?? '—'}, {sucursal.longitud ?? '—'}</dd></div>      
-              </dl>
-              <p className="owner-description">{sucursal.descripcion || 'Sin descripción.'}</p>
-              {sucursal.motivo_rechazo && <p className="owner-error"><strong>Motivo del rechazo:</strong> {sucursal.motivo_rechazo}</p>}
-              <div className="owner-edit-actions">
-                <button type="button" className="button button-secondary"
+              <div className="owner-detail-header">
+                <div>
+                  <h3>{sucursal.nombre_establecimiento}</h3>
+                  <p>{nombres[sucursal.tipo_servicio] || 'Tipo no especificado'}</p>
+                </div>
+                <button
+                  type="button"
+                  className="button button-secondary"
                   disabled={guardando || sucursal.estado === 'SUSPENDIDO'}
-                  onClick={() => { limpiarProductos(); setAviso(''); setEdicion(sucursal.id); }}>
-                  Editar datos de esta sucursal
+                  onClick={() => { limpiarProductos(); setAviso(''); setEdicion(sucursal.id); }}
+                >
+                  Editar datos y mapa
                 </button>
               </div>
-              {sucursal.estado === 'APROBADO' ? (
-                <>
-                  <button
-                    type="button"
-                    className="button button-primary"
-                    aria-expanded={productos}
-                    disabled={guardando}
-                    onClick={() => {
-                      setCitas(false);
-                      setPersonal(false);
-                      setServicios(false);
-                      setProductos(abierto => !abierto);
-                    }}
-                  >
-                    {productos
-                      ? 'Cerrar productos'
-                      : 'Administrar productos de esta sucursal'}
-                  </button>
 
-                  {productos && (
-                    <ProductosSucursal
-                      key={sucursal.id}
-                      idSucursal={sucursal.id}
-                      onTotal={actualizarTotalProductos}
-                      onGuardando={setGuardando}
-                    />
-                  )}
-
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    aria-expanded={servicios}
-                    disabled={guardando}
-                    onClick={() => {
-                      setCitas(false);
-                      setPersonal(false);
-                      setProductos(false);
-                      setServicios(abierto => !abierto);
-                    }}
-                  >
-                    {servicios
-                      ? 'Cerrar servicios'
-                      : 'Administrar servicios de esta sucursal'}
-                  </button>
-
-                  {servicios && (
-                    <ServiciosSucursal
-                      key={sucursal.id}
-                      idSucursal={sucursal.id}
-                      onTotal={actualizarTotalServicios}
-                      onGuardando={setGuardando}
-                    />
-                  )}
-
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    aria-expanded={personal}
-                    disabled={guardando}
-                    onClick={() => {
-                      setCitas(false);
-                      setServicios(false);
-                      setProductos(false);
-                      setPersonal(abierto => !abierto);
-                    }}
-                  >
-                    {personal
-                      ? 'Cerrar empleados y horarios'
-                      : 'Administrar empleados y horarios'}
-                  </button>
-
-                  {personal && (
-                    <PersonalSucursal
-                      key={sucursal.id}
-                      idSucursal={sucursal.id}
-                      onTotal={actualizarTotalEmpleados}
-                      onGuardando={setGuardando}
-                    />
-                  )}
-
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    aria-expanded={citas}
-                    disabled={guardando}
-                    onClick={() => {
-                      setProductos(false);
-                      setServicios(false);
-                      setPersonal(false);
-                      setCitas(abierto => !abierto);
-                    }}
-                  >
-                    {citas
-                      ? 'Cerrar citas'
-                      : 'Administrar citas de esta sucursal'}
-                  </button>
-
-                  {citas && (
-                    <CitasSucursal
-                      key={sucursal.id}
-                      idSucursal={sucursal.id}
-                      onTotal={actualizarTotalCitas}
-                      onGuardando={setGuardando}
-                    />
-                  )}
-                </>
-              ) : (
-                <p>Esta sucursal requiere aprobación antes de operar.</p>
+              {sucursal.motivo_rechazo && (
+                <p className="owner-error">
+                  <strong>Motivo del rechazo:</strong> {sucursal.motivo_rechazo}
+                </p>
               )}
+
+              <div
+                className="owner-tabs"
+                role="tablist"
+                aria-label={`Gestión de ${sucursal.nombre_establecimiento}`}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tabActiva === 'resumen'}
+                  className={`owner-tab ${tabActiva === 'resumen' ? 'is-active' : ''}`}
+                  disabled={guardando}
+                  onClick={() => setTabActiva('resumen')}
+                >
+                  📋 Datos generales
+                </button>
+
+                {sucursal.estado === 'APROBADO' && (
+                  <>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={tabActiva === 'citas'}
+                      className={`owner-tab ${tabActiva === 'citas' ? 'is-active' : ''}`}
+                      disabled={guardando}
+                      onClick={() => setTabActiva('citas')}
+                    >
+                      📅 Citas
+                    </button>
+
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={tabActiva === 'servicios'}
+                      className={`owner-tab ${tabActiva === 'servicios' ? 'is-active' : ''}`}
+                      disabled={guardando}
+                      onClick={() => setTabActiva('servicios')}
+                    >
+                      🩺 Servicios
+                    </button>
+
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={tabActiva === 'productos'}
+                      className={`owner-tab ${tabActiva === 'productos' ? 'is-active' : ''}`}
+                      disabled={guardando}
+                      onClick={() => setTabActiva('productos')}
+                    >
+                      🛍️ Productos
+                    </button>
+
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={tabActiva === 'personal'}
+                      className={`owner-tab ${tabActiva === 'personal' ? 'is-active' : ''}`}
+                      disabled={guardando}
+                      onClick={() => setTabActiva('personal')}
+                    >
+                      👩‍⚕️ Empleados y horarios
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="owner-tab-panel" role="tabpanel">
+                {tabActiva === 'resumen' && (
+                  <>
+                    <dl className="owner-facts">
+                      <div><dt>Identificador</dt><dd>{sucursal.id}</dd></div>
+                      <div><dt>Revisión</dt><dd>{sucursal.estado}</dd></div>
+                      <div><dt>Directorio público</dt><dd>{sucursal.activo_directorio ? 'Visible' : 'No visible'}</dd></div>
+                      <div><dt>Teléfono / WhatsApp</dt><dd>{sucursal.telefono_whatsapp || 'Sin dato'}</dd></div>
+                      <div><dt>Correo de contacto</dt><dd>{sucursal.correo_contacto || 'Sin dato'}</dd></div>
+                      <div><dt>Dirección</dt><dd>{sucursal.direccion || 'Sin dato'}</dd></div>
+                      <div><dt>Código postal</dt><dd>{sucursal.codigo_postal || 'Sin dato'}</dd></div>
+                      <div><dt>Ubicación</dt><dd>{sucursal.latitud ?? '—'}, {sucursal.longitud ?? '—'}</dd></div>
+                    </dl>
+                    <p className="owner-description">{sucursal.descripcion || 'Sin descripción.'}</p>
+                    {sucursal.estado !== 'APROBADO' && (
+                      <p className="owner-note">Esta sucursal requiere aprobación antes de operar servicios, productos, personal o citas.</p>
+                    )}
+                  </>
+                )}
+
+                {sucursal.estado === 'APROBADO' && tabActiva === 'citas' && (
+                  <CitasSucursal
+                    key={`citas-${sucursal.id}`}
+                    idSucursal={sucursal.id}
+                    onTotal={actualizarTotalCitas}
+                    onGuardando={setGuardando}
+                  />
+                )}
+
+                {sucursal.estado === 'APROBADO' && tabActiva === 'servicios' && (
+                  <ServiciosSucursal
+                    key={`servicios-${sucursal.id}`}
+                    idSucursal={sucursal.id}
+                    onTotal={actualizarTotalServicios}
+                    onGuardando={setGuardando}
+                  />
+                )}
+
+                {sucursal.estado === 'APROBADO' && tabActiva === 'productos' && (
+                  <ProductosSucursal
+                    key={`productos-${sucursal.id}`}
+                    idSucursal={sucursal.id}
+                    onTotal={actualizarTotalProductos}
+                    onGuardando={setGuardando}
+                  />
+                )}
+
+                {sucursal.estado === 'APROBADO' && tabActiva === 'personal' && (
+                  <PersonalSucursal
+                    key={`personal-${sucursal.id}`}
+                    idSucursal={sucursal.id}
+                    onTotal={actualizarTotalEmpleados}
+                    onGuardando={setGuardando}
+                  />
+                )}
+              </div>
             </> : <p>Selecciona una sucursal para ver su información.</p>}
           </div>
         </div>}
