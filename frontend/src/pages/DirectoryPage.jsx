@@ -216,11 +216,6 @@ export default function DirectoryPage() {
 
           servicios:
             Array.isArray(item.servicios) ? item.servicios : [],
-
-          showProducts: Boolean(item.mostrar_productos_directorio),
-
-          productos:
-            Array.isArray(item.productos) ? item.productos : [],
         }));
 
       setEstablishments(
@@ -1094,7 +1089,7 @@ async function openEstablishment(item, triggerElement = null) {
             </div>
 
             {/* =============================================
-                PESTAÑAS DEL ESTABLECIMIENTO (SERVICIOS, CITAS, PRODUCTOS)
+                PESTAÑAS DEL ESTABLECIMIENTO (SERVICIOS Y CITAS)
                 ============================================= */}
             <div className="modal-tabs-bar" role="tablist" aria-label="Secciones del establecimiento">
               <button
@@ -1116,18 +1111,6 @@ async function openEstablishment(item, triggerElement = null) {
               >
                 📅 Citas
               </button>
-
-              {selectedEstablishment.showProducts && (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === 'productos'}
-                  className={`modal-tab-btn ${activeTab === 'productos' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('productos')}
-                >
-                  🛍️ Productos ({selectedEstablishment.productos?.length || 0})
-                </button>
-              )}
             </div>
 
             {activeTab === 'servicios' && (
@@ -1171,45 +1154,6 @@ async function openEstablishment(item, triggerElement = null) {
                     <div>
                       <strong>Sin servicios publicados aún</strong>
                       <p>Puedes consultar disponibilidad de citas o escribir por WhatsApp.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'productos' && selectedEstablishment.showProducts && (
-              <div className="modal-tab-panel" role="tabpanel">
-                <div className="modal-tab-panel-head">
-                  <div>
-                    <h3>🛍️ Productos disponibles en tienda</h3>
-                    <p>Artículos con existencia disponible en sucursal.</p>
-                  </div>
-                </div>
-
-                {selectedEstablishment.productos?.length > 0 ? (
-                  <div className="catalog-items-grid">
-                    {selectedEstablishment.productos.map((prod) => (
-                      <div key={prod.id} className="catalog-item-card">
-                        <div>
-                          <strong>{prod.nombre}</strong>
-                          <small>
-                            {prod.tipo_uso || 'Venta'} · {prod.stock} disponibles
-                          </small>
-                        </div>
-                        {prod.precio != null && (
-                          <span className="catalog-price">
-                            {formatPrice(prod.precio)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="availability-empty">
-                    <span>🛍️</span>
-                    <div>
-                      <strong>Sin productos en existencia por el momento</strong>
-                      <p>Este establecimiento tiene activa su tienda, pero actualmente no cuenta con stock disponible.</p>
                     </div>
                   </div>
                 )}

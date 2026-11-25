@@ -26,6 +26,13 @@
 .revision-historial { padding-left: 22px; }
 .revision-historial li { padding: 10px 0; }
 .revision-historial p { margin: 5px 0; }
+.revision-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.revision-chip { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.revision-chip-ok { background: #e4f4ed; color: #1a5c47; }
+.revision-chip-warn { background: #fff3d5; color: #7a4f08; }
+.revision-chip-muted { background: #eef2f5; color: #4f6069; }
+.revision-propietario-box { padding: 16px 18px; border-radius: 14px; border: 1px solid #d5e6e0; background: #f5faf8; }
+.revision-propietario-box.is-blocked { border-color: #f0cf82; background: #fffaf0; }
 @media (max-width: 640px) {
   .revision-filtros, .revision-datos { grid-template-columns: 1fr; }
   .revision-lista li { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }

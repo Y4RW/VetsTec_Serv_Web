@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+const TIPOS_ETIQUETA = {
+  VETERINARIA: { texto: 'Veterinaria', icono: '🩺' },
+  ESTETICA: { texto: 'Estética canina', icono: '✂️' },
+};
+
 async function pedir(url, opciones = {}) {
   const respuesta = await fetch(url, {
     credentials: 'same-origin',
@@ -134,8 +139,8 @@ export default function ServiciosSucursal({
       setForm(null);
       setAviso(
         metodo === 'DELETE'
-          ? 'Servicio eliminado.'
-          : 'Servicio guardado.'
+          ? 'Servicio eliminado del catálogo.'
+          : 'Servicio guardado correctamente.'
       );
 
       if (consulta.desde !== 0) {
@@ -162,99 +167,133 @@ export default function ServiciosSucursal({
     : [datos?.tipoSucursal].filter(Boolean);
 
   return (
-    <section className="owner-products">
-      <h4>Servicios de esta sucursal</h4>
+    <section className="owner-products own-module">
+      <div className="own-module-header">
+        <div>
+          <h4>Catálogo de servicios</h4>
+          <p>Configura las consultas, baños o procedimientos que ofreces y su duración estimada.</p>
+        </div>
 
-      {error && <p className="owner-error" role="alert">{error}</p>}
-      {aviso && <p className="owner-success" role="status">{aviso}</p>}
+        <div className="own-module-actions">
+          <button
+            type="button"
+            className="own-btn own-btn-secondary"
+            disabled={ocupado}
+            onClick={() => {
+              if (form && !window.confirm('Recargar cerrará el formulario abierto. ¿Continuar?')) return;
+              cargar(consulta);
+            }}
+          >
+            ↻ Actualizar
+          </button>
 
-      {bloqueado && (
-        <p>
-          Recarga y comprueba el resultado antes de volver a guardar.
-          Copia los cambios que quieras conservar: la recarga cerrará el formulario.
-        </p>
-      )}
-
-      <div className="owner-edit-actions">
-        <button
-          type="button"
-          className="button button-secondary"
-          disabled={ocupado}
-          onClick={() => {
-            if (
-              form &&
-              !window.confirm('Recargar cerrará el formulario. ¿Continuar?')
-            ) return;
-
-            cargar(consulta);
-          }}
-        >
-          Recargar servicios
-        </button>
-
-        <button
-          type="button"
-          className="button button-primary"
-          disabled={ocupado || bloqueado || !datos || Boolean(form)}
-          onClick={() => {
-            setAviso('');
-            setForm({
-              nombre_servicio: '',
-              tipo_servicio: tipos[0],
-              tiempo_estimado_minutos: '',
-              precio_base: '',
-            });
-          }}
-        >
-          Agregar servicio
-        </button>
+          <button
+            type="button"
+            className="own-btn own-btn-primary"
+            disabled={ocupado || bloqueado || !datos || Boolean(form)}
+            onClick={() => {
+              setAviso('');
+              setForm({
+                nombre_servicio: '',
+                tipo_servicio: tipos[0] || '',
+                tiempo_estimado_minutos: '30',
+                precio_base: '',
+              });
+            }}
+          >
+            + Nuevo servicio
+          </button>
+        </div>
       </div>
 
+      {error && <p className="own-alert own-alert-danger" role="alert">{error}</p>}
+      {aviso && (
+        <div className="own-alert own-alert-success" role="status">
+          <span>✓ {aviso}</span>
+          <button type="button" className="own-alert-dismiss" onClick={() => setAviso('')} aria-label="Cerrar aviso">×</button>
+        </div>
+      )}
+
+      {bloqueado && (
+        <div className="own-alert own-alert-warning">
+          Pulsa <strong>Actualizar</strong> para sincronizar la lista antes de volver a guardar (copia antes tus cambios si deseas conservarlos).
+        </div>
+      )}
+
       <form
-        className="owner-edit-actions"
+        className="own-search-bar"
         onSubmit={e => {
           e.preventDefault();
           setConsulta({ q: busqueda.trim(), desde: 0 });
         }}
       >
-        <label className="form-field">
-          <span>Buscar servicio</span>
+        <div className="own-search-input-wrap">
+          <span className="own-search-icon" aria-hidden="true">🔎</span>
           <input
+            type="search"
             value={busqueda}
             maxLength={100}
+            placeholder="Buscar servicio por nombre…"
+            aria-label="Buscar servicio"
             disabled={ocupado || Boolean(form)}
             onChange={e => setBusqueda(e.target.value)}
           />
-        </label>
+        </div>
+
         <button
           type="submit"
-          className="button button-secondary"
+          className="own-btn own-btn-secondary"
           disabled={ocupado || Boolean(form)}
         >
           Buscar
         </button>
+
+        {(consulta.q || busqueda) && (
+          <button
+            type="button"
+            className="own-btn own-btn-ghost"
+            disabled={ocupado || Boolean(form)}
+            onClick={() => {
+              setBusqueda('');
+              if (consulta.q) setConsulta({ q: '', desde: 0 });
+            }}
+          >
+            Limpiar
+          </button>
+        )}
       </form>
 
       {form && (
         <form
-          className="register-card"
+          className="own-form-panel"
           onSubmit={e => {
             e.preventDefault();
             guardar(form.id ? 'PATCH' : 'POST', form);
           }}
         >
-          <fieldset
-            className="owner-edit-fields"
-            disabled={ocupado || bloqueado}
-          >
-            <legend>{form.id ? 'Editar servicio' : 'Nuevo servicio'}</legend>
+          <div className="own-form-panel-head">
+            <div>
+              <span className="own-eyebrow">{form.id ? 'Edición' : 'Alta de servicio'}</span>
+              <h4>{form.id ? 'Editar servicio' : 'Registrar nuevo servicio'}</h4>
+            </div>
+            <button
+              type="button"
+              className="own-btn own-btn-sm own-btn-ghost"
+              disabled={ocupado}
+              onClick={() => setForm(null)}
+            >
+              ✕ Cerrar
+            </button>
+          </div>
 
-            <div className="register-form-grid">
-              <label className="form-field">
-                <span>Nombre</span>
+          <fieldset className="own-fieldset" disabled={ocupado || bloqueado}>
+            <div className="own-form-grid">
+              <label className="own-field own-field-full">
+                <span>Nombre del servicio *</span>
                 <input
                   required
                   maxLength={100}
+                  placeholder="Ej. Consulta médica general, Vacunación múltiple, Baño y corte"
                   value={form.nombre_servicio}
                   onChange={e => setForm(f => ({
                     ...f,
@@ -263,8 +302,8 @@ export default function ServiciosSucursal({
                 />
               </label>
 
-              <label className="form-field">
-                <span>Tipo</span>
+              <label className="own-field">
+                <span>Área de atención *</span>
                 <select
                   required
                   value={form.tipo_servicio}
@@ -273,19 +312,24 @@ export default function ServiciosSucursal({
                     tipo_servicio: e.target.value,
                   }))}
                 >
-                  <option value="">Seleccionar</option>
-                  {tipos.map(t => <option key={t} value={t}>{t}</option>)}
+                  <option value="">Seleccionar área</option>
+                  {tipos.map(t => (
+                    <option key={t} value={t}>
+                      {TIPOS_ETIQUETA[t]?.texto || t}
+                    </option>
+                  ))}
                 </select>
               </label>
 
-              <label className="form-field">
-                <span>Duración estimada en minutos</span>
+              <label className="own-field">
+                <span>Duración estimada (minutos) *</span>
                 <input
                   type="number"
                   required
                   min="1"
                   max="2147483647"
                   step="1"
+                  placeholder="Ej. 30"
                   value={form.tiempo_estimado_minutos}
                   onChange={e => setForm(f => ({
                     ...f,
@@ -294,14 +338,15 @@ export default function ServiciosSucursal({
                 />
               </label>
 
-              <label className="form-field">
-                <span>Precio base</span>
+              <label className="own-field">
+                <span>Precio base ($ MXN) *</span>
                 <input
                   type="number"
                   required
                   min="0"
                   max="99999999.99"
                   step="0.01"
+                  placeholder="Ej. 350.00"
                   value={form.precio_base}
                   onChange={e => setForm(f => ({
                     ...f,
@@ -311,108 +356,159 @@ export default function ServiciosSucursal({
               </label>
             </div>
 
-            <button type="submit" className="button button-primary">
-              {guardando ? 'Guardando…' : 'Guardar servicio'}
-            </button>
+            <div className="own-form-footer">
+              <button
+                type="button"
+                className="own-btn own-btn-secondary"
+                disabled={ocupado}
+                onClick={() => setForm(null)}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="own-btn own-btn-primary">
+                {guardando ? 'Guardando…' : '✓ Guardar servicio'}
+              </button>
+            </div>
           </fieldset>
-
-          <button
-            type="button"
-            className="button button-secondary"
-            disabled={ocupado}
-            onClick={() => setForm(null)}
-          >
-            Cerrar formulario
-          </button>
         </form>
       )}
 
-      {cargando && <p role="status">Cargando servicios…</p>}
+      {cargando && (
+        <div className="own-loading-card" role="status">
+          <span className="own-spinner" aria-hidden="true" />
+          <span>Cargando catálogo de servicios…</span>
+        </div>
+      )}
 
       {datos && (
         <>
-          <p>{datos.total} resultado(s). Hasta 20 servicios por página.</p>
-          <p>
-            Los servicios con citas conservan sus datos y no pueden
-            editarse ni eliminarse desde este módulo.
-          </p>
-
           {datos.servicios.length === 0 ? (
-            <p>No hay servicios para esta búsqueda.</p>
+            <div className="own-empty-box">
+              <p>
+                {consulta.q
+                  ? `No encontramos servicios que coincidan con “${consulta.q}”.`
+                  : 'Todavía no has registrado servicios en esta sucursal.'}
+              </p>
+              {!consulta.q && !form && (
+                <button
+                  type="button"
+                  className="own-btn own-btn-primary"
+                  onClick={() => setForm({
+                    nombre_servicio: '',
+                    tipo_servicio: tipos[0] || '',
+                    tiempo_estimado_minutos: '30',
+                    precio_base: '',
+                  })}
+                >
+                  + Registrar mi primer servicio
+                </button>
+              )}
+            </div>
           ) : (
-            <div className="owner-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Servicio</th>
-                    <th>Tipo</th>
-                    <th>Minutos</th>
-                    <th>Precio</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {datos.servicios.map(s => (
-                    <tr key={s.id}>
-                      <td>{s.nombre_servicio}</td>
-                      <td>{s.tipo_servicio}</td>
-                      <td>{s.tiempo_estimado_minutos}</td>
-                      <td>${Number(s.precio_base).toFixed(2)}</td>
-                      <td>
-                        {s.tiene_citas ? 'Con citas asociadas' : (
-                          <>
-                            <button
-                              type="button"
-                              disabled={ocupado || bloqueado || Boolean(form)}
-                              onClick={() => {
-                                setAviso('');
-                                setForm({ ...s });
-                              }}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              disabled={ocupado || bloqueado || Boolean(form)}
-                              onClick={() => {
-                                if (window.confirm(`¿Eliminar “${s.nombre_servicio}”?`)) {
-                                  guardar('DELETE', s);
-                                }
-                              }}
-                            >
-                              Eliminar
-                            </button>
-                          </>
-                        )}
-                      </td>
+            <div className="own-table-card">
+              <div className="owner-table-wrap">
+                <table className="own-table">
+                  <thead>
+                    <tr>
+                      <th>Servicio</th>
+                      <th>Área</th>
+                      <th>Duración</th>
+                      <th>Precio base</th>
+                      <th>Acciones</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {datos.servicios.map(s => {
+                      const infoTipo = TIPOS_ETIQUETA[s.tipo_servicio];
+                      return (
+                        <tr key={s.id}>
+                          <td>
+                            <strong>{s.nombre_servicio}</strong>
+                          </td>
+                          <td>
+                            <span className="own-badge own-badge-info">
+                              {infoTipo ? `${infoTipo.icono} ${infoTipo.texto}` : s.tipo_servicio}
+                            </span>
+                          </td>
+                          <td>⏱ {s.tiempo_estimado_minutos} min</td>
+                          <td>
+                            <strong className="own-price-tag">
+                              ${Number(s.precio_base).toFixed(2)}
+                            </strong>
+                          </td>
+                          <td>
+                            {s.tiene_citas ? (
+                              <span
+                                className="own-badge own-badge-neutral"
+                                title="Los servicios con citas asociadas conservan su historial y no pueden modificarse ni eliminarse."
+                              >
+                                🔒 Con historial de citas
+                              </span>
+                            ) : (
+                              <div className="own-row-actions">
+                                <button
+                                  type="button"
+                                  className="own-btn own-btn-sm own-btn-secondary"
+                                  disabled={ocupado || bloqueado || Boolean(form)}
+                                  onClick={() => {
+                                    setAviso('');
+                                    setForm({ ...s });
+                                  }}
+                                >
+                                  ✎ Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="own-btn own-btn-sm own-btn-danger-ghost"
+                                  disabled={ocupado || bloqueado || Boolean(form)}
+                                  onClick={() => {
+                                    if (window.confirm(`¿Eliminar el servicio “${s.nombre_servicio}”?`)) {
+                                      guardar('DELETE', s);
+                                    }
+                                  }}
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
-          <div className="owner-edit-actions">
-            <button
-              type="button"
-              disabled={ocupado || Boolean(form) || consulta.desde === 0}
-              onClick={() => setConsulta(c => ({
-                ...c,
-                desde: Math.max(0, c.desde - 20),
-              }))}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              disabled={ocupado || Boolean(form) || !datos.hayMas}
-              onClick={() => setConsulta(c => ({
-                ...c,
-                desde: c.desde + 20,
-              }))}
-            >
-              Siguiente
-            </button>
+          <div className="own-pagination">
+            <span className="own-pagination-meta">
+              {datos.total} servicio(s) en total · Nota: los servicios con citas previas se protegen contra edición para conservar el historial.
+            </span>
+            <div className="own-pagination-buttons">
+              <button
+                type="button"
+                className="own-btn own-btn-sm own-btn-secondary"
+                disabled={ocupado || Boolean(form) || consulta.desde === 0}
+                onClick={() => setConsulta(c => ({
+                  ...c,
+                  desde: Math.max(0, c.desde - 20),
+                }))}
+              >
+                ← Anterior
+              </button>
+              <button
+                type="button"
+                className="own-btn own-btn-sm own-btn-secondary"
+                disabled={ocupado || Boolean(form) || !datos.hayMas}
+                onClick={() => setConsulta(c => ({
+                  ...c,
+                  desde: c.desde + 20,
+                }))}
+              >
+                Siguiente →
+              </button>
+            </div>
           </div>
         </>
       )}

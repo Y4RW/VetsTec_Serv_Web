@@ -38,17 +38,23 @@ function Detalle({ id, solicitar, alDecidir, volver }) {
   const [motivo, setMotivo] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [confirmada, setConfirmada] = useState(false);
+  const [verificarCuenta, setVerificarCuenta] = useState(false);
   const [fotoLista, setFotoLista] = useState(false);
   const revision = useRef(0), bloqueado = useRef(false);
+
   async function cargar() {
     const actual = ++revision.current;
-    setCargando(true); setError(''); setConfirmada(false); setAccion('');
+    setCargando(true); setError(''); setConfirmada(false); setAccion(''); setVerificarCuenta(false);
     try {
       const resultado = await solicitar(`/${id}`);
       if (actual === revision.current) setDatos(resultado);
-    } catch (fallo) { if (actual === revision.current) { setDatos(null); setError(fallo.message); } }
-    finally { if (actual === revision.current) setCargando(false); }
+    } catch (fallo) {
+      if (actual === revision.current) { setDatos(null); setError(fallo.message); }
+    } finally {
+      if (actual === revision.current) setCargando(false);
+    }
   }
+
   useEffect(() => {
     cargar();
     return () => { revision.current += 1; };
@@ -56,29 +62,71 @@ function Detalle({ id, solicitar, alDecidir, volver }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, solicitar]);
 
+  async function habilitarPropietario() {
+    if (bloqueado.current) return;
+    bloqueado.current = true;
+    setEnviando(true);
+    setError('');
+    setAviso('');
+    try {
+      const resultado = await solicitar(`/${id}/habilitar-propietario`, { method: 'POST', datos: {} });
+      setAviso(`Perfil de propietario desbloqueado y verificado (${resultado.correo}). Ya puede acceder a su panel sin restricciones.`);
+      alDecidir();
+      await cargar();
+    } catch (fallo) {
+      setError(fallo.message);
+    } finally {
+      bloqueado.current = false;
+      setEnviando(false);
+    }
+  }
+
   async function decidir(event) {
     event.preventDefault();
     if (bloqueado.current) return;
     bloqueado.current = true; setEnviando(true); setError(''); setAviso('');
     try {
-      const resultado = await solicitar(`/${id}/decision`, { method: 'POST', datos: {
-        decision: accion, motivo, observaciones, revisionConfirmada: confirmada,
-        versionRevision: datos.version_revision,
-      } });
-      setAviso(resultado.estado === 'APROBADO' ? 'Aprobación guardada. El establecimiento ya puede aparecer en el directorio.' : 'Rechazo guardado. El motivo está disponible en el panel del establecimiento.');
-      setAccion(''); setMotivo(''); setObservaciones('');
+      const resultado = await solicitar(`/${id}/decision`, {
+        method: 'POST',
+        datos: {
+          decision: accion,
+          motivo,
+          observaciones,
+          revisionConfirmada: confirmada,
+          verificarCuenta: !datos.correo_verificado && verificarCuenta,
+          versionRevision: datos.version_revision,
+        },
+      });
+      setAviso(
+        resultado.estado === 'APROBADO'
+          ? 'Establecimiento aprobado y perfil de propietario habilitado. Ya puede operar y aparecer en el directorio.'
+          : resultado.estado === 'SUSPENDIDO'
+            ? 'Establecimiento suspendido y retirado del directorio público.'
+            : 'Rechazo guardado. El motivo está disponible en el panel del establecimiento.'
+      );
+      setAccion(''); setMotivo(''); setObservaciones(''); setVerificarCuenta(false);
       alDecidir();
       await cargar();
     } catch (fallo) {
-      // Si se perdió la respuesta, el servidor pudo haber confirmado la transacción.
-      // Volver a leer antes de decidir evita anunciar un resultado que no conocemos.
-      setAccion(''); setConfirmada(false); setDatos(null);
-      setError(fallo.message + ' Pulsa Actualizar detalle para comprobar el estado antes de volver a decidir.');
-    } finally { bloqueado.current = false; setEnviando(false); }
+      setAccion(''); setConfirmada(false);
+      setError(fallo.message);
+    } finally {
+      bloqueado.current = false;
+      setEnviando(false);
+    }
   }
-  const puedeAprobar = datos?.correo_verificado &&
+
+  const tieneCuentas = Boolean(datos?.cuentas?.length);
+  const cumpleCuenta = Boolean(datos?.correo_verificado || (tieneCuentas && verificarCuenta));
+  const cumpleRequisitos = Boolean(
+    datos &&
     (datos.tipo_servicio !== 'ESTETICA' || (datos.tiene_evidencia && fotoLista)) &&
-    (!['VETERINARIA', 'AMBAS'].includes(datos.tipo_servicio) || (datos.nombre_responsable?.trim() && datos.cedula_profesional?.trim()));
+    (!['VETERINARIA', 'AMBAS'].includes(datos.tipo_servicio) || (datos.nombre_responsable?.trim() && datos.cedula_profesional?.trim()))
+  );
+  const puedeIniciarAprobacion = tieneCuentas && cumpleRequisitos;
+  const puedeConfirmarAprobacion = cumpleCuenta && cumpleRequisitos && confirmada;
+  const perfilBloqueado = tieneCuentas && (!datos?.acceso_propietario_activo || !datos?.correo_verificado);
+
   return <section className="admin-card revision-detalle" aria-labelledby="revision-detalle-titulo" aria-busy={cargando || enviando}>
     <div className="revision-barra">
       <h2 id="revision-detalle-titulo">Detalle de la solicitud #{id}</h2>
@@ -100,51 +148,169 @@ function Detalle({ id, solicitar, alDecidir, volver }) {
           ['Ubicación', `${datos.latitud ?? '—'}, ${datos.longitud ?? '—'}`],
           ['Solicitud recibida', fecha(datos.fecha_solicitud)], ['Última revisión', fecha(datos.fecha_revision)],
           ['Directorio', datos.activo_directorio && datos.estado === 'APROBADO' && datos.correo_verificado ? 'Publicado' : 'No publicado'],
+          ['Perfil de propietario', !tieneCuentas ? 'Sin cuenta registrada' : datos.acceso_propietario_activo ? 'Desbloqueado y activo' : 'Bloqueado / sin acceso activo'],
         ].map(([titulo, valor]) => <div key={titulo}><dt>{titulo}</dt><dd>{valor || 'Sin dato'}</dd></div>)}
       </dl>
-      <h3>Descripción</h3><p className="revision-texto">{datos.descripcion || 'Sin descripción.'}</p>
-      <h3>Cuenta del establecimiento</h3>
-      {datos.cuentas.length ? datos.cuentas.map(cuenta => <p key={cuenta.correo} className="revision-texto">
-        {cuenta.correo} · {cuenta.correo_verificado ? 'Correo verificado' : 'Correo sin verificar'} · {cuenta.activo ? 'Cuenta activa' : 'Cuenta inactiva'}
-      </p>) : <p>No hay una cuenta asociada.</p>}
+
+      <h3>Descripción</h3>
+      <p className="revision-texto">{datos.descripcion || 'Sin descripción.'}</p>
+
+      <h3>Cuenta y perfil del propietario</h3>
+      <div className={`revision-propietario-box ${perfilBloqueado ? 'is-blocked' : ''}`}>
+        {tieneCuentas ? (
+          <>
+            {datos.cuentas.map(cuenta => (
+              <p key={cuenta.correo} className="revision-texto" style={{ margin: '0 0 8px' }}>
+                <strong>{cuenta.correo}</strong>
+                {' · '}
+                {cuenta.correo_verificado ? '✓ Correo verificado' : '⚠️ Correo sin verificar'}
+                {' · '}
+                {cuenta.activo ? 'Cuenta activa' : 'Cuenta inactiva'}
+              </p>
+            ))}
+
+            {perfilBloqueado ? (
+              <div className="revision-barra" style={{ margin: '12px 0 0' }}>
+                <p style={{ margin: 0 }}>
+                  ⚠️ Este propietario aún tiene su perfil bloqueado (correo sin verificar o sin acceso activo a su red de sucursales).
+                </p>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  disabled={enviando}
+                  onClick={habilitarPropietario}
+                >
+                  {enviando ? 'Desbloqueando…' : '🔓 Verificar y desbloquear perfil'}
+                </button>
+              </div>
+            ) : (
+              <p style={{ margin: '6px 0 0', color: '#205b4b', fontWeight: 600 }}>
+                ✓ Perfil de propietario verificado y con acceso activo en el panel.
+              </p>
+            )}
+          </>
+        ) : (
+          <p style={{ margin: 0 }}>
+            No hay una cuenta de propietario registrada para este establecimiento (registro de prueba o pendiente de reclamar).
+          </p>
+        )}
+      </div>
+
       <h3>Evidencia de registro</h3>
       {datos.tiene_evidencia ? <Evidencia id={id} solicitar={solicitar} alCambiar={setFotoLista} /> :
         <p>Sin fotografía adjunta. El registro de veterinaria o servicio mixto solicita nombre del responsable y cédula.</p>}
-      {datos.motivo_rechazo && <p className="admin-notice"><strong>Motivo del rechazo:</strong> {datos.motivo_rechazo}</p>}
-      {datos.estado === 'PENDIENTE' && <div className="revision-decision">
-        <h3>Resolver solicitud</h3>
-        {!datos.correo_verificado && <p className="admin-notice">Antes de aprobar, el establecimiento debe verificar su correo. Después pulsa Actualizar detalle.</p>}
-        {datos.tipo_servicio === 'ESTETICA' && !fotoLista && <p>Para aprobar una estética, primero debe cargarse su fotografía.</p>}
-        {['VETERINARIA', 'AMBAS'].includes(datos.tipo_servicio) && <p>Revisa el responsable y su cédula antes de aprobar. El sistema no comprueba automáticamente su autenticidad.</p>}
+      {datos.motivo_rechazo && <p className="admin-notice"><strong>Motivo registrado:</strong> {datos.motivo_rechazo}</p>}
+
+      <div className="revision-decision">
+        <h3>{datos.estado === 'PENDIENTE' ? 'Resolver solicitud' : 'Cambiar estado del establecimiento'}</h3>
+
+        {!tieneCuentas && datos.estado !== 'APROBADO' && (
+          <p className="admin-notice">
+            Este registro no tiene una cuenta de propietario asociada en <code>usuarios_negocio</code>; no puede aprobarse hasta que exista una cuenta vinculada.
+          </p>
+        )}
+        {tieneCuentas && !datos.correo_verificado && datos.estado !== 'APROBADO' && (
+          <p className="admin-notice">
+            El propietario aún no verificó su correo por código. Puedes desbloquearlo arriba con “Verificar y desbloquear perfil” o marcar la verificación directa al aprobar.
+          </p>
+        )}
+        {datos.tipo_servicio === 'ESTETICA' && !fotoLista && datos.estado !== 'APROBADO' && (
+          <p>Para aprobar una estética, primero debe cargarse correctamente su fotografía de evidencia.</p>
+        )}
+        {['VETERINARIA', 'AMBAS'].includes(datos.tipo_servicio) && datos.estado !== 'APROBADO' && (
+          <p>Revisa el responsable y su cédula antes de aprobar. El sistema no comprueba automáticamente su autenticidad.</p>
+        )}
+
         <div className="revision-barra">
-          <button className="button button-primary" disabled={!puedeAprobar || enviando} onClick={() => { setAccion('APROBADO'); setConfirmada(false); }}>Aprobar establecimiento</button>
-          <button className="button button-secondary" disabled={enviando} onClick={() => { setAccion('RECHAZADO'); setConfirmada(false); }}>Rechazar solicitud</button>
+          {datos.estado !== 'APROBADO' && (
+            <button
+              className="button button-primary"
+              disabled={!puedeIniciarAprobacion || enviando}
+              onClick={() => {
+                setAccion('APROBADO');
+                setConfirmada(false);
+                setVerificarCuenta(!datos.correo_verificado);
+              }}
+            >
+              {datos.estado === 'PENDIENTE' ? 'Aprobar establecimiento' : 'Reactivar y aprobar'}
+            </button>
+          )}
+          {datos.estado === 'PENDIENTE' && (
+            <button
+              className="button button-secondary"
+              disabled={enviando}
+              onClick={() => { setAccion('RECHAZADO'); setConfirmada(false); }}
+            >
+              Rechazar solicitud
+            </button>
+          )}
+          {datos.estado === 'APROBADO' && (
+            <button
+              className="button button-secondary"
+              disabled={enviando}
+              onClick={() => { setAccion('SUSPENDIDO'); setConfirmada(false); }}
+            >
+              Suspender establecimiento
+            </button>
+          )}
         </div>
+
         {accion && <form className="revision-form" onSubmit={decidir}>
-          <h4>{accion === 'APROBADO' ? 'Confirmar aprobación y publicación' : 'Confirmar rechazo'}</h4>
-          {accion === 'RECHAZADO' && <label>Motivo del rechazo (lo verá el establecimiento)
-            <textarea value={motivo} onChange={e => setMotivo(e.target.value)} minLength={10} maxLength={2000} required disabled={enviando} rows={3} />
-          </label>}
+          <h4>
+            {accion === 'APROBADO'
+              ? 'Confirmar aprobación, publicación y desbloqueo'
+              : accion === 'SUSPENDIDO'
+                ? 'Confirmar suspensión del establecimiento'
+                : 'Confirmar rechazo'}
+          </h4>
+          {['RECHAZADO', 'SUSPENDIDO'].includes(accion) && (
+            <label>
+              {accion === 'SUSPENDIDO'
+                ? 'Motivo de la suspensión (lo verá el establecimiento)'
+                : 'Motivo del rechazo (lo verá el establecimiento)'}
+              <textarea value={motivo} onChange={e => setMotivo(e.target.value)} minLength={10} maxLength={2000} required disabled={enviando} rows={3} />
+            </label>
+          )}
           <label>Observaciones internas (opcional)
             <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} maxLength={2000} disabled={enviando} rows={3} />
           </label>
+          {accion === 'APROBADO' && !datos.correo_verificado && (
+            <label className="revision-confirmar">
+              <input type="checkbox" checked={verificarCuenta} onChange={e => setVerificarCuenta(e.target.checked)} disabled={enviando} />
+              Verificar manualmente la cuenta del propietario y habilitar su acceso al panel.
+            </label>
+          )}
           {accion === 'APROBADO' && <label className="revision-confirmar">
             <input type="checkbox" required checked={confirmada} onChange={e => setConfirmada(e.target.checked)} disabled={enviando} />
-            Revisé los datos y los requisitos. Confirmo que este establecimiento puede publicarse en el directorio.
+            Revisé los datos y los requisitos. Confirmo que este establecimiento puede operar y publicarse en el directorio.
           </label>}
           <div className="revision-barra">
-            <button className="button button-primary" disabled={enviando || (accion === 'APROBADO' && (!confirmada || !puedeAprobar)) || (accion === 'RECHAZADO' && motivo.trim().length < 10)}>
-              {enviando ? 'Guardando…' : accion === 'APROBADO' ? 'Confirmar aprobación' : 'Confirmar rechazo'}
+            <button
+              className="button button-primary"
+              disabled={
+                enviando ||
+                (accion === 'APROBADO' && !puedeConfirmarAprobacion) ||
+                (['RECHAZADO', 'SUSPENDIDO'].includes(accion) && motivo.trim().length < 10)
+              }
+            >
+              {enviando
+                ? 'Guardando…'
+                : accion === 'APROBADO'
+                  ? 'Confirmar aprobación'
+                  : accion === 'SUSPENDIDO'
+                    ? 'Confirmar suspensión'
+                    : 'Confirmar rechazo'}
             </button>
             <button type="button" className="button button-secondary" disabled={enviando} onClick={() => setAccion('')}>Cancelar</button>
           </div>
         </form>}
-      </div>}
+      </div>
+
       {datos.estado === 'APROBADO' && <p><Link to="/directorio" target="_blank" rel="noopener noreferrer">Abrir directorio en otra pestaña</Link> y buscar “{datos.nombre_establecimiento}”.</p>}
       <h3>Historial de revisión</h3>
       {datos.historial.length === 0 ? <p>Todavía no hay decisiones registradas desde esta etapa.</p> :
         <ol className="revision-historial">{datos.historial.map(item => <li key={item.id}>
-          <strong>{estados[item.estado_nuevo]}</strong> · {item.administrador} · {fecha(item.fecha)}
+          <strong>{estados[item.estado_nuevo] || item.estado_nuevo}</strong> · {item.administrador} · {fecha(item.fecha)}
           {item.motivo && <p>Motivo: {item.motivo}</p>}
           {item.observaciones && <p>Observaciones internas: {item.observaciones}</p>}
         </li>)}</ol>}
@@ -153,7 +319,7 @@ function Detalle({ id, solicitar, alDecidir, volver }) {
 }
 
 export default function SolicitudesAdmin({ solicitar }) {
-  const [estado, setEstado] = useState('PENDIENTE');
+  const [estado, setEstado] = useState('TODAS');
   const [texto, setTexto] = useState('');
   const [buscar, setBuscar] = useState('');
   const [pagina, setPagina] = useState(1);
@@ -178,8 +344,8 @@ export default function SolicitudesAdmin({ solicitar }) {
   useEffect(() => { if (seleccionado) detalleRef.current?.focus(); }, [seleccionado]);
   return <div className="revision-modulo">
     <section className="admin-card" aria-labelledby="revision-lista-titulo">
-      <div className="revision-barra"><div><h2 id="revision-lista-titulo">Solicitudes de establecimientos</h2>
-        <p>Revisa el registro y decide si puede aparecer en el directorio.</p></div>
+      <div className="revision-barra"><div><h2 id="revision-lista-titulo">Solicitudes y cuentas de propietarios</h2>
+        <p>Revisa los establecimientos, aprueba su publicación y verifica o desbloquea el perfil del propietario.</p></div>
         <button className="button button-secondary" onClick={() => setCambio(n => n + 1)} disabled={cargando}>Actualizar lista</button>
       </div>
       <form className="revision-filtros" onSubmit={e => { e.preventDefault(); setPagina(1); setBuscar(texto.trim()); setCambio(n => n + 1); }}>
@@ -191,11 +357,27 @@ export default function SolicitudesAdmin({ solicitar }) {
       </form>
       {error && <p className="admin-error" role="alert">{error}</p>}
       {cargando ? <p role="status">Cargando solicitudes…</p> : lista && <>
-        <p role="status">{lista.total} solicitud(es) encontradas.</p>
+        <p role="status">{lista.total} establecimiento(s) encontrados.</p>
         {!lista.solicitudes.length && <p>No hay solicitudes con estos filtros.</p>}
         <ul className="revision-lista">{lista.solicitudes.map(item => <li key={item.id}>
-          <div><strong>{item.nombre_establecimiento}</strong><p>#{item.id} · {tipos[item.tipo_servicio]} · CP {item.codigo_postal}</p>
-            <small>{item.correo_verificado ? 'Correo verificado' : 'Correo sin verificar'}</small></div>
+          <div>
+            <strong>{item.nombre_establecimiento}</strong>
+            <p>#{item.id} · {tipos[item.tipo_servicio]} · CP {item.codigo_postal}</p>
+            <div className="revision-chips">
+              {!item.tiene_cuenta ? (
+                <span className="revision-chip revision-chip-muted">Sin cuenta vinculada</span>
+              ) : (
+                <>
+                  <span className={`revision-chip ${item.correo_verificado ? 'revision-chip-ok' : 'revision-chip-warn'}`}>
+                    {item.correo_verificado ? '✓ Correo verificado' : '⚠️ Correo sin verificar'}
+                  </span>
+                  <span className={`revision-chip ${item.acceso_propietario_activo ? 'revision-chip-ok' : 'revision-chip-warn'}`}>
+                    {item.acceso_propietario_activo ? '🔓 Perfil activo' : '🔒 Perfil bloqueado'}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
           <Estado valor={item.estado} />
           <button className="button button-secondary" aria-label={`Revisar ${item.nombre_establecimiento}`} onClick={() => setSeleccionado(item.id)}>Revisar</button>
         </li>)}</ul>

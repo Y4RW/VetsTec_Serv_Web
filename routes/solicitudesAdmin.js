@@ -5,6 +5,17 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
   const fallo = (status, message) => Object.assign(new Error(message), { status });
   const idValido = (valor) => /^[1-9]\d*$/.test(valor || '') && Number(valor) <= 2147483647;
   const verificadoSQL = cuentaVerificadaSQL('n.id');
+  const accesoPropietarioActivoSQL = `EXISTS (
+    SELECT 1
+    FROM public.redes_sucursales rs
+    JOIN public.redes_propietarios rp ON rp.id_red = rs.id_red AND rp.activo = TRUE
+    JOIN public.usuarios_negocio up ON up.id = rp.id_usuario
+    JOIN public.redes_sucursales ro ON ro.id_red = rp.id_red AND ro.id_negocio = up.id_negocio
+    WHERE rs.id_negocio = n.id
+      AND up.activo = TRUE
+      AND up.correo_verificado = TRUE
+      AND up.dos_pasos_activo = FALSE
+  )`;
 
   // autenticacionAdmin debe registrarse antes. Esta comprobación adicional falla
   // de forma cerrada si el módulo se instala accidentalmente en otro orden.
@@ -15,20 +26,101 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
     }
     next();
   });
+
   function responderError(res, error) {
     if (!error.status) console.error('Error revisando solicitudes:', error.message);
-    return res.status(error.status || 503).json({ success: false,
-      message: error.status ? error.message : 'No se pudo completar la revisión. Actualiza y vuelve a intentarlo.' });
+    return res.status(error.status || 503).json({
+      success: false,
+      message: error.status
+        ? error.message
+        : 'No se pudo completar la revisión. Actualiza y vuelve a intentarlo.',
+    });
   }
+
   function rutaEvidencia(id, ruta) {
     // Solo admite la carpeta y los nombres generados por el registro existente.
     return typeof ruta === 'string' && new RegExp(`^negocio-${id}/[a-zA-Z0-9-]+\\.(jpg|png|webp)$`).test(ruta);
   }
+
   function tipoImagen(bytes) {
-    if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return 'image/png';
+    if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
     if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg';
     if (bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
     return null;
+  }
+
+  // Asegura que el propietario tenga su red y permiso activo en redes_propietarios
+  // para que su perfil en /panel no quede bloqueado.
+  async function asegurarAccesoPropietario(client, idNegocio, nombreEstablecimiento, { verificarCorreo = false } = {}) {
+    const cuentas = await client.query(`
+      SELECT u.id, u.id_negocio, u.correo, u.activo, u.correo_verificado, u.dos_pasos_activo
+      FROM public.usuarios_negocio u
+      WHERE ${cuentaDeNegocioSQL('$1')}
+      ORDER BY (u.id_negocio = $1) DESC, u.correo_verificado DESC, u.activo DESC, u.id ASC
+      FOR UPDATE OF u
+    `, [idNegocio]);
+
+    let principal = cuentas.rows[0] || null;
+
+    if (verificarCorreo && principal) {
+      await client.query(`
+        UPDATE public.usuarios_negocio
+        SET correo_verificado = TRUE, activo = TRUE, dos_pasos_activo = FALSE
+        WHERE id = $1
+      `, [principal.id]);
+      principal = { ...principal, correo_verificado: true, activo: true, dos_pasos_activo: false };
+    }
+
+    const sucursal = await client.query(`
+      SELECT id_red
+      FROM public.redes_sucursales
+      WHERE id_negocio = $1
+      FOR UPDATE
+    `, [idNegocio]);
+
+    let idRed = sucursal.rows[0]?.id_red || null;
+
+    if (!idRed && principal) {
+      const red = await client.query(`
+        INSERT INTO public.redes_negocio (nombre)
+        VALUES ($1)
+        RETURNING id
+      `, [String(nombreEstablecimiento || `Negocio ${idNegocio}`).trim()]);
+      idRed = red.rows[0].id;
+
+      await client.query(`
+        INSERT INTO public.redes_sucursales (id_red, id_negocio, es_principal)
+        VALUES ($1, $2, TRUE)
+        ON CONFLICT (id_negocio) DO NOTHING
+      `, [idRed, idNegocio]);
+    }
+
+    if (idRed) {
+      const prop = await client.query(`
+        SELECT id_usuario, activo
+        FROM public.redes_propietarios
+        WHERE id_red = $1
+        FOR UPDATE
+      `, [idRed]);
+
+      if (prop.rowCount) {
+        if (!prop.rows[0].activo) {
+          await client.query(`
+            UPDATE public.redes_propietarios
+            SET activo = TRUE
+            WHERE id_red = $1
+          `, [idRed]);
+        }
+      } else if (principal) {
+        await client.query(`
+          INSERT INTO public.redes_propietarios (id_red, id_usuario, activo)
+          VALUES ($1, $2, TRUE)
+          ON CONFLICT (id_red) DO UPDATE SET activo = TRUE
+        `, [idRed, principal.id]);
+      }
+    }
+
+    return { principal, cuentas: cuentas.rows };
   }
 
   app.get(base, async (req, res) => {
@@ -48,7 +140,9 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
         WITH filtradas AS (
           SELECT n.id, n.nombre_establecimiento, n.tipo_servicio, n.codigo_postal,
             n.activo_directorio, v.estado, v.fecha_solicitud,
-            ${verificadoSQL} AS correo_verificado
+            ${verificadoSQL} AS correo_verificado,
+            ${accesoPropietarioActivoSQL} AS acceso_propietario_activo,
+            EXISTS (SELECT 1 FROM public.usuarios_negocio u WHERE ${cuentaDeNegocioSQL('n.id')}) AS tiene_cuenta
           FROM verificacion_negocio v JOIN configuracion_negocio n ON n.id = v.id_negocio
           WHERE ${filtro}
         ), pagina AS (
@@ -73,8 +167,11 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
           n.xmin::text || ':' || v.xmin::text AS version_revision,
           (v.foto_establecimiento_url IS NOT NULL) AS tiene_evidencia,
           ${verificadoSQL} AS correo_verificado,
-          COALESCE((SELECT json_agg(json_build_object('correo', u.correo,
-            'correo_verificado', u.correo_verificado, 'activo', u.activo) ORDER BY u.id)
+          ${accesoPropietarioActivoSQL} AS acceso_propietario_activo,
+          COALESCE((SELECT json_agg(json_build_object(
+            'id', u.id, 'correo', u.correo,
+            'correo_verificado', u.correo_verificado, 'activo', u.activo,
+            'dos_pasos_activo', u.dos_pasos_activo) ORDER BY u.id)
           FROM usuarios_negocio u WHERE ${cuentaDeNegocioSQL('n.id')}), '[]'::json) AS cuentas,
           COALESCE((SELECT json_agg(json_build_object('id', h.id,
             'administrador', h.administrador_nombre, 'estado_anterior', h.estado_anterior,
@@ -92,6 +189,7 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
   app.get(`${base}/:id/evidencia`, async (req, res) => {
     try {
       if (!idValido(req.params.id)) throw fallo(400, 'Identificador no válido.');
+      if (!supabase) throw fallo(503, 'El almacenamiento de evidencias no está configurado.');
       const resultado = await pool.query(`SELECT foto_establecimiento_url
         FROM verificacion_negocio WHERE id_negocio = $1`, [Number(req.params.id)]);
       const ruta = resultado.rows[0]?.foto_establecimiento_url;
@@ -103,54 +201,137 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
       const bytes = Buffer.from(await data.arrayBuffer());
       const tipo = tipoImagen(bytes);
       if (!tipo) throw fallo(415, 'El archivo no es una imagen JPG, PNG o WEBP válida.');
-      res.set({ 'Content-Type': tipo, 'X-Content-Type-Options': 'nosniff',
-        'Content-Disposition': 'inline', 'Cross-Origin-Resource-Policy': 'same-origin',
-        'Content-Security-Policy': "default-src 'none'; sandbox" });
+      res.set({
+        'Content-Type': tipo,
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': 'inline',
+        'Cross-Origin-Resource-Policy': 'same-origin',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+      });
       return res.send(bytes);
     } catch (error) { return responderError(res, error); }
+  });
+
+  // Permite al administrador verificar la cuenta de un propietario y desbloquear su acceso
+  // en redes_propietarios/redes_sucursales sin importar si ya estaba aprobado o pendiente.
+  app.post(`${base}/:id/habilitar-propietario`, async (req, res) => {
+    let client;
+    try {
+      if (!idValido(req.params.id)) throw fallo(400, 'Identificador no válido.');
+      const id = Number(req.params.id);
+      client = await pool.connect();
+      await client.query('BEGIN');
+
+      const negocioRes = await client.query(`
+        SELECT n.id, n.nombre_establecimiento, v.estado
+        FROM configuracion_negocio n
+        JOIN verificacion_negocio v ON v.id_negocio = n.id
+        WHERE n.id = $1
+        FOR UPDATE OF n, v
+      `, [id]);
+
+      const negocio = negocioRes.rows[0];
+      if (!negocio) throw fallo(404, 'Establecimiento no encontrado.');
+
+      const { principal } = await asegurarAccesoPropietario(
+        client,
+        id,
+        negocio.nombre_establecimiento,
+        { verificarCorreo: true }
+      );
+
+      if (!principal) {
+        throw fallo(409, 'Este establecimiento no tiene ninguna cuenta de propietario registrada.');
+      }
+
+      await client.query('COMMIT');
+      return res.json({
+        success: true,
+        data: {
+          id,
+          correo: principal.correo,
+          correo_verificado: true,
+          acceso_propietario_activo: true,
+        },
+      });
+    } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => {});
+      return responderError(res, error);
+    } finally {
+      client?.release();
+    }
   });
 
   app.post(`${base}/:id/decision`, async (req, res) => {
     let client;
     try {
       if (!idValido(req.params.id)) throw fallo(400, 'Identificador no válido.');
-      const { decision, motivo = '', observaciones = '', revisionConfirmada, versionRevision } = req.body || {};
-      if (!['APROBADO', 'RECHAZADO'].includes(decision) || typeof motivo !== 'string' ||
+      const {
+        decision,
+        motivo = '',
+        observaciones = '',
+        revisionConfirmada,
+        versionRevision,
+        verificarCuenta = false,
+      } = req.body || {};
+
+      if (!['APROBADO', 'RECHAZADO', 'SUSPENDIDO'].includes(decision) || typeof motivo !== 'string' ||
           typeof observaciones !== 'string' || motivo.length > 2000 || observaciones.length > 2000) {
-        throw fallo(400, 'Selecciona una decisión y utiliza textos de hasta 2000 caracteres.');
+        throw fallo(400, 'Selecciona una decisión válida y utiliza textos de hasta 2000 caracteres.');
       }
-      if (decision === 'RECHAZADO' && motivo.trim().length < 10) throw fallo(400, 'Escribe un motivo de rechazo de al menos 10 caracteres.');
-      if (decision === 'APROBADO' && revisionConfirmada !== true) throw fallo(400, 'Confirma que revisaste los datos y los requisitos del establecimiento.');
+      if (['RECHAZADO', 'SUSPENDIDO'].includes(decision) && motivo.trim().length < 10) {
+        throw fallo(400, 'Escribe un motivo de al menos 10 caracteres.');
+      }
+      if (decision === 'APROBADO' && revisionConfirmada !== true) {
+        throw fallo(400, 'Confirma que revisaste los datos y los requisitos del establecimiento.');
+      }
       if (typeof versionRevision !== 'string' || !/^\d{1,10}:\d{1,10}$/.test(versionRevision)) {
         throw fallo(409, 'Actualiza el detalle y revisa los datos antes de decidir.');
       }
+
       const id = Number(req.params.id);
       client = await pool.connect();
       await client.query('BEGIN');
+
       const resultado = await client.query(`
-        SELECT n.id, n.tipo_servicio, v.estado, v.nombre_responsable,
+        SELECT n.id, n.nombre_establecimiento, n.tipo_servicio, v.estado, v.nombre_responsable,
         v.cedula_profesional, v.foto_establecimiento_url,
         n.xmin::text || ':' || v.xmin::text AS version_revision
         FROM verificacion_negocio v JOIN configuracion_negocio n ON n.id = v.id_negocio
         WHERE n.id = $1 FOR UPDATE OF v, n
       `, [id]);
+
       const solicitud = resultado.rows[0];
       if (!solicitud) throw fallo(404, 'Solicitud no encontrada.');
-      if (solicitud.estado !== 'PENDIENTE') throw fallo(409, 'Esta solicitud ya fue revisada. Actualiza el detalle para ver la decisión.');
+      if (solicitud.estado === decision) {
+        throw fallo(409, 'Esta solicitud ya se encuentra en ese estado. Actualiza el detalle.');
+      }
       if (solicitud.version_revision !== versionRevision) {
         throw fallo(409, 'El propietario modificó los datos o hubo otra revisión. Actualiza el detalle antes de decidir.');
       }
+
       if (decision === 'APROBADO') {
         await client.query(`SELECT p.id_red FROM public.redes_propietarios p
           JOIN public.redes_sucursales s ON s.id_red = p.id_red
           WHERE s.id_negocio = $1 FOR UPDATE OF p`, [id]);
+
+        await asegurarAccesoPropietario(
+          client,
+          id,
+          solicitud.nombre_establecimiento,
+          { verificarCorreo: verificarCuenta === true }
+        );
+
         const usuarios = await client.query(`SELECT u.id, u.activo, u.correo_verificado
           FROM public.usuarios_negocio u WHERE ${cuentaDeNegocioSQL('$1')}
           ORDER BY u.id FOR UPDATE OF u`, [id]);
+
         if (!usuarios.rows.some(u => u.activo && u.correo_verificado)) {
-          throw fallo(409, 'El establecimiento debe verificar su correo antes de aprobarlo.');
+          throw fallo(409, 'El establecimiento debe tener su correo verificado antes de aprobarlo. Usa la opción de verificar cuenta del propietario o espera su confirmación.');
         }
-        if (!['VETERINARIA', 'ESTETICA', 'AMBAS'].includes(solicitud.tipo_servicio)) throw fallo(409, 'El tipo de establecimiento no es válido.');
+        if (!['VETERINARIA', 'ESTETICA', 'AMBAS'].includes(solicitud.tipo_servicio)) {
+          throw fallo(409, 'El tipo de establecimiento no es válido.');
+        }
         if (['VETERINARIA', 'AMBAS'].includes(solicitud.tipo_servicio) &&
             (!solicitud.nombre_responsable?.trim() || !solicitud.cedula_profesional?.trim())) {
           throw fallo(409, 'Faltan el responsable veterinario o su cédula profesional.');
@@ -159,20 +340,53 @@ module.exports = function registrarSolicitudesAdmin(app, { pool, supabase }) {
           throw fallo(409, 'Falta una fotografía válida del establecimiento.');
         }
       }
-      await client.query(`UPDATE verificacion_negocio SET estado = $2, motivo_rechazo = $3,
-        observaciones_revision = $4, fecha_revision = CURRENT_TIMESTAMP WHERE id_negocio = $1`,
-        [id, decision, decision === 'RECHAZADO' ? motivo.trim() : null, observaciones.trim() || null]);
-      await client.query('UPDATE configuracion_negocio SET activo_directorio = $2 WHERE id = $1', [id, decision === 'APROBADO']);
+
+      await client.query(`
+        UPDATE verificacion_negocio
+        SET estado = $2, motivo_rechazo = $3,
+            observaciones_revision = $4, fecha_revision = CURRENT_TIMESTAMP
+        WHERE id_negocio = $1
+      `, [
+        id,
+        decision,
+        ['RECHAZADO', 'SUSPENDIDO'].includes(decision) ? motivo.trim() : null,
+        observaciones.trim() || null,
+      ]);
+
+      await client.query(
+        'UPDATE configuracion_negocio SET activo_directorio = $2 WHERE id = $1',
+        [id, decision === 'APROBADO']
+      );
+
       const actor = req.admin.administrador;
-      await client.query(`INSERT INTO historial_revision_negocio
-        (id_negocio, id_admin, administrador_nombre, estado_anterior, estado_nuevo, motivo, observaciones)
-        VALUES ($1, $2, $3, 'PENDIENTE', $4, $5, $6)`,
-        [id, actor.id, actor.nombre, decision, decision === 'RECHAZADO' ? motivo.trim() : null, observaciones.trim() || null]);
+      await client.query(`
+        INSERT INTO historial_revision_negocio
+          (id_negocio, id_admin, administrador_nombre, estado_anterior, estado_nuevo, motivo, observaciones)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [
+        id,
+        actor.id,
+        actor.nombre,
+        solicitud.estado,
+        decision,
+        ['RECHAZADO', 'SUSPENDIDO'].includes(decision) ? motivo.trim() : null,
+        observaciones.trim() || null,
+      ]);
+
       await client.query('COMMIT');
-      return res.json({ success: true, data: { id, estado: decision, activo_directorio: decision === 'APROBADO' } });
+      return res.json({
+        success: true,
+        data: {
+          id,
+          estado: decision,
+          activo_directorio: decision === 'APROBADO',
+        },
+      });
     } catch (error) {
       if (client) await client.query('ROLLBACK').catch(() => {});
       return responderError(res, error);
-    } finally { client?.release(); }
+    } finally {
+      client?.release();
+    }
   });
 };

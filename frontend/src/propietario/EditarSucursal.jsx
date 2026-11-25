@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import RegistrationAddress from '../components/RegistrationAddress';
 import MapPicker from '../components/MapPicker';
 
-const nombres = { VETERINARIA: 'Veterinaria', ESTETICA: 'Estética canina', AMBAS: 'Veterinaria y estética' };
+const nombres = {
+  VETERINARIA: '🩺 Veterinaria',
+  ESTETICA: '✂️ Estética canina',
+  AMBAS: '🐾 Veterinaria y estética',
+};
 const campos = ['nombreEstablecimiento', 'tipoServicio', 'telefonoWhatsapp', 'correoContacto',
   'descripcion', 'direccion', 'codigoPostal', 'latitud', 'longitud', 'nombreResponsable', 'cedulaProfesional'];
 const camposDireccion = ['direccion', 'codigoPostal', 'latitud', 'longitud', 'calle',
@@ -17,7 +21,6 @@ function formularioDe(datos) {
     descripcion: datos.descripcion || '', direccion: datos.direccion || '', codigoPostal: datos.codigo_postal || '',
     latitud: datos.latitud ?? '', longitud: datos.longitud ?? '', nombreResponsable: datos.nombre_responsable || '',
     cedulaProfesional: datos.cedula_profesional || '',
-    mostrarProductosDirectorio: Boolean(datos.mostrar_productos_directorio),
     evidencia: null,
     calle: '', numeroExterior: '', colonia: '', municipio: '', estado: '', direccionManual: false,
   };
@@ -79,6 +82,7 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
     cargar();
     return () => { montado.current = false; peticion.current?.abort(); };
   }, [cargar]);
+
   useEffect(() => {
     if (!form?.evidencia) { setPreview(''); return; }
     const url = URL.createObjectURL(form.evidencia);
@@ -89,21 +93,35 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
   function cambiar(e) {
     const { name, value } = e.target;
     setError('');
-    setForm(anterior => ({ ...anterior, [name]: value,
+    setForm(anterior => ({
+      ...anterior,
+      [name]: value,
       ...(name === 'tipoServicio' ? { evidencia: null } : {}),
     }));
   }
 
   function cambiarDireccion() {
     direccionAnterior.current = Object.fromEntries(camposDireccion.map(campo => [campo, form[campo]]));
-    setForm(anterior => ({ ...anterior, direccion: '', latitud: '', longitud: '', calle: '',
-      numeroExterior: '', colonia: '', municipio: '', estado: '', direccionManual: false }));
-    setEditandoDireccion(true); setError('');
+    setForm(anterior => ({
+      ...anterior,
+      direccion: '',
+      latitud: '',
+      longitud: '',
+      calle: '',
+      numeroExterior: '',
+      colonia: '',
+      municipio: '',
+      estado: '',
+      direccionManual: false,
+    }));
+    setEditandoDireccion(true);
+    setError('');
   }
 
   function conservarDireccion() {
     setForm(anterior => ({ ...anterior, ...direccionAnterior.current }));
-    setEditandoDireccion(false); setError('');
+    setEditandoDireccion(false);
+    setError('');
   }
 
   function seleccionarFoto(e) {
@@ -113,9 +131,11 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
         archivo.size === 0 || archivo.size > 5 * 1024 * 1024) {
       setError('Selecciona una fotografía JPG, PNG o WEBP de hasta 5 MB, que no esté vacía.');
       setForm(anterior => ({ ...anterior, evidencia: null }));
-      e.target.value = ''; return;
+      e.target.value = '';
+      return;
     }
-    setForm(anterior => ({ ...anterior, evidencia: archivo })); setError('');
+    setForm(anterior => ({ ...anterior, evidencia: archivo }));
+    setError('');
   }
 
   const identidadCambiada = Boolean(actual && form && (
@@ -139,34 +159,39 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
     if (enviando.current || suspendida || requiereRecarga) return;
     if (!form.nombreEstablecimiento.trim() || !/^\d{10}$/.test(form.telefonoWhatsapp) ||
         !/^\d{5}$/.test(form.codigoPostal) || !form.direccion.trim()) {
-      setError('Completa nombre, teléfono de 10 dígitos y dirección con código postal de 5 dígitos.'); return;
+      setError('Completa nombre, teléfono de 10 dígitos y dirección con código postal de 5 dígitos.');
+      return;
     }
     if (
-        [[form.latitud, 90], [form.longitud, 180]].some(
-          ([valor, maximo]) =>
-            !texto(valor) ||
-            !Number.isFinite(Number(valor)) ||
-            Math.abs(Number(valor)) > maximo
-        )
-      ) {
-    setError('Confirma la ubicación de la sucursal en el mapa.');
-    return;
+      [[form.latitud, 90], [form.longitud, 180]].some(
+        ([valor, maximo]) =>
+          !texto(valor) ||
+          !Number.isFinite(Number(valor)) ||
+          Math.abs(Number(valor)) > maximo
+      )
+    ) {
+      setError('Confirma la ubicación de la sucursal en el mapa.');
+      return;
     }
     if (esVeterinaria && (!form.nombreResponsable.trim() || !/^\d{1,30}$/.test(form.cedulaProfesional.trim()))) {
-      setError('Indica el profesional responsable y su cédula de hasta 30 dígitos.'); return;
+      setError('Indica el profesional responsable y su cédula de hasta 30 dígitos.');
+      return;
     }
     if (requiereFoto && !form.evidencia) {
-      setError('Adjunta una fotografía actual de la estética para revisar los cambios.'); return;
+      setError('Adjunta una fotografía actual de la estética para revisar los cambios.');
+      return;
     }
-    enviando.current = true; setGuardando(true); onGuardando(true); setError('');
+    enviando.current = true;
+    setGuardando(true);
+    onGuardando(true);
+    setError('');
     const controller = new AbortController();
     peticion.current = controller;
     let respuestaDefinitiva = false;
-    
+
     try {
       const body = new FormData();
       for (const campo of campos) body.append(campo, texto(form[campo]));
-      body.append('mostrarProductosDirectorio', form.mostrarProductosDirectorio ? 'true' : 'false');
       body.append('version', actual.version);
       if (form.evidencia) body.append('evidencia', form.evidencia);
       const respuesta = await fetch(`/api/propietario/sucursales/${idSucursal}`, {
@@ -183,7 +208,7 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
         respuesta.status < 500 &&
         respuesta.status !== 408 &&
         json?.success === false;
-      
+
       if (
         !respuesta.ok ||
         json?.success !== true ||
@@ -198,13 +223,13 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
         ) {
           setConflicto(true);
         }
-      
+
         throw new Error(
           json?.message ||
           'No se pudo confirmar el guardado. Actualiza los datos antes de reintentar.'
         );
       }
-      
+
       respuestaDefinitiva = true;
       if (montado.current) {
         onGuardada(json.data);
@@ -212,7 +237,6 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
     } catch (fallo) {
       if (montado.current && !controller.signal.aborted) {
         setGuardadoIncierto(!respuestaDefinitiva);
-
         setError(
           !respuestaDefinitiva
             ? 'No pudimos confirmar si los cambios se guardaron. Carga los datos actuales antes de volver a guardar.'
@@ -221,139 +245,292 @@ export default function EditarSucursal({ idSucursal, onCancelar, onGuardada, onG
       }
     } finally {
       enviando.current = false;
-
       if (montado.current) {
         setGuardando(false);
         onGuardando(false);
       }
     }
   }
-  
-  return <section className="owner-create owner-edit" aria-labelledby="sucursal-editar-titulo">
-    <div className="owner-create-heading">
-      <div>
-        <p className="owner-kicker">Sucursal #{idSucursal}</p>
-        <h3 id="sucursal-editar-titulo" ref={titulo} tabIndex={-1}>Editar sucursal</h3>
-        <p>Los cambios se guardarán únicamente en esta sucursal.</p>
-      </div>
-      <button type="button" className="button button-secondary" onClick={onCancelar} disabled={guardando}>
-        Cancelar edición
-      </button>
-    </div>
-    {cargando && <p role="status">Abriendo datos actuales…</p>}
-    {error && <p className="owner-error" role="alert">{error}</p>}
-    {!cargando && (!form || requiereRecarga) && (
-      <div className="owner-edit-reload">
-        {requiereRecarga && (
-          <p>
-            Cargar la versión actual reemplaza este formulario con los datos
-            guardados. Copia antes cualquier cambio que quieras conservar.
+
+  return (
+    <section className="owner-create owner-edit own-workspace" aria-labelledby="sucursal-editar-titulo">
+      <div className="own-workspace-header">
+        <div>
+          <span className="own-eyebrow">Configuración · Sucursal #{idSucursal}</span>
+          <h3 id="sucursal-editar-titulo" ref={titulo} tabIndex={-1}>
+            Editar ficha y ubicación de la sucursal
+          </h3>
+          <p className="own-workspace-address">
+            Los ajustes realizados aquí aplican únicamente para esta sucursal.
           </p>
-        )}
-    
+        </div>
         <button
           type="button"
-          className="button button-secondary"
+          className="own-btn own-btn-secondary"
+          onClick={onCancelar}
           disabled={guardando}
-          onClick={cargar}
         >
-          Cargar datos actuales
+          ← Volver a la sucursal
         </button>
       </div>
-    )}
-    {!cargando && form && <form className="register-card" onSubmit={guardar} aria-busy={guardando}>
-      <p className="owner-edit-notice" role="status">
-        {suspendida ? 'Esta sucursal está suspendida. Contacta a VetStec para revisar su situación.' : requiereRevision
-          ? 'Al guardar los cambios, la sucursal quedará pendiente de revisión y no aparecerá en el directorio hasta su aprobación.'
-          : 'Cambiar teléfono, correo de contacto o descripción conserva el estado de revisión. Cambiar nombre, dirección, mapa, tipo o requisitos necesita una nueva revisión.'}
-      </p>
-      {actual.motivo_rechazo && <p className="owner-error"><strong>Motivo del rechazo:</strong> {actual.motivo_rechazo}</p>}
-      <fieldset
-        className="owner-edit-fields"
-        disabled={guardando || suspendida || requiereRecarga}
-      >
-        <legend className="owner-edit-legend">Datos de la sucursal</legend>
-        <div className="register-form-grid">
-          <label className="form-field form-field-full"><span>Nombre de la sucursal *</span>
-            <input name="nombreEstablecimiento" value={form.nombreEstablecimiento} onChange={cambiar} maxLength={150} required />
-          </label>
-          <label className="form-field form-field-full"><span>Tipo de establecimiento *</span>
-            <select name="tipoServicio" value={form.tipoServicio} onChange={cambiar} required>
-              {Object.entries(nombres).map(([valor, nombre]) => <option key={valor} value={valor}>{nombre}</option>)}
-            </select>
-          </label>
-          <label className="form-field"><span>Teléfono / WhatsApp *</span>
-            <input type="tel" name="telefonoWhatsapp" value={form.telefonoWhatsapp} onChange={cambiar}
-              pattern="[0-9]{10}" inputMode="numeric" maxLength={10} required />
-          </label>
-          <label className="form-field"><span>Correo de contacto *</span>
-            <input type="email" name="correoContacto" value={form.correoContacto} onChange={cambiar} maxLength={150} required />
-          </label>
-          <label className="form-field form-field-full"><span>Descripción</span>
-            <textarea name="descripcion" value={form.descripcion} onChange={cambiar} maxLength={2000} rows={4} />
-          </label>
-          <label className="form-field form-field-full" style={{ flexDirection: 'row', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={Boolean(form.mostrarProductosDirectorio)}
-              onChange={(e) => setForm(anterior => ({ ...anterior, mostrarProductosDirectorio: e.target.checked }))}
-              style={{ width: '20px', height: '20px' }}
-            />
-            <span>Mostrar pestaña de <strong>Productos en venta</strong> dentro de mi ficha pública en el Directorio</span>
-          </label>
-          <div className="form-field-full owner-edit-address">
-            <h4>Dirección y ubicación</h4>
-            {editandoDireccion ? <>
-              <p>Completa la nueva dirección y confirma su punto en el mapa.</p>
-              <button type="button" className="button button-secondary" onClick={conservarDireccion}>Conservar dirección anterior</button>
-            </> : <>
-              <p>{form.direccion || 'Sin dirección registrada'}</p>
-              <p>Código postal: {form.codigoPostal || '—'} · Ubicación: {form.latitud === '' ? '—' : form.latitud}, {form.longitud === '' ? '—' : form.longitud}</p>
-              <div className="owner-edit-actions">
-                <button type="button" className="button button-secondary" onClick={cambiarDireccion}>Cambiar dirección</button>
-                <button type="button" className="button button-secondary" disabled={!form.direccion}
-                  onClick={() => setMapa({ direccion: form.direccion, latitud: form.latitud, longitud: form.longitud })}>
-                  Ajustar punto en el mapa
-                </button>
-              </div>
-            </>}
-          </div>
-          {editandoDireccion && <RegistrationAddress form={form} setForm={setForm} clearError={() => setError('')} />}
-          {esVeterinaria && <>
-            <label className="form-field"><span>Profesional responsable *</span>
-              <input name="nombreResponsable" value={form.nombreResponsable} onChange={cambiar} maxLength={150} required />
-            </label>
-            <label className="form-field"><span>Cédula profesional *</span>
-              <input name="cedulaProfesional" value={form.cedulaProfesional} onChange={cambiar}
-                inputMode="numeric" pattern="[0-9]{1,30}" maxLength={30} required />
-            </label>
-          </>}
-          {form.tipoServicio === 'ESTETICA' && <label className="form-field form-field-full">
-            <span>{requiereFoto ? 'Fotografía actual de la estética *' : 'Actualizar fotografía (opcional)'}</span>
-            <small>{actual.tiene_evidencia ? 'Ya hay una fotografía registrada. ' : ''}
-              Si cambias el nombre, tipo o ubicación, adjunta una fotografía actual. JPG, PNG o WEBP, hasta 5 MB.</small>
-            <input ref={fotoInput} type="file" accept="image/jpeg,image/png,image/webp" onChange={seleccionarFoto} />
-          </label>}
-          {form.evidencia && preview && <div className="owner-edit-photo form-field-full">
-            <img src={preview} alt="Nueva fotografía de la estética" /><span>{form.evidencia.name}</span>
-            <button type="button" className="button button-secondary" onClick={() => {
-              setForm(anterior => ({ ...anterior, evidencia: null }));
-              if (fotoInput.current) fotoInput.current.value = '';
-            }}>Quitar fotografía nueva</button>
-          </div>}
+
+      {cargando && (
+        <div className="own-loading-card" role="status">
+          <span className="own-spinner" aria-hidden="true" />
+          <span>Cargando información actual de la sucursal…</span>
         </div>
-        <div className="register-actions">
-          <button type="button" className="button button-secondary" onClick={onCancelar}>Cancelar edición</button>
-          <button type="submit" className="button button-primary">
-            {guardando ? 'Guardando…' : requiereRevision ? 'Guardar y enviar a revisión' : 'Guardar cambios'}
+      )}
+
+      {error && <p className="own-alert own-alert-danger" role="alert">{error}</p>}
+
+      {!cargando && (!form || requiereRecarga) && (
+        <div className="own-info-card">
+          {requiereRecarga && (
+            <p className="own-field-hint" style={{ marginBottom: 14 }}>
+              Cargar la versión actual reemplazará este formulario con los datos guardados en el servidor. Copia antes cualquier texto que quieras conservar.
+            </p>
+          )}
+          <button
+            type="button"
+            className="own-btn own-btn-secondary"
+            disabled={guardando}
+            onClick={cargar}
+          >
+            ↻ Cargar datos actuales
           </button>
         </div>
-      </fieldset>
-    </form>}
-    {mapa && <MapPicker initialLat={mapa.latitud} initialLng={mapa.longitud}
-      onClose={() => setMapa(null)} onConfirm={({ latitud, longitud }) => {
-        setForm(anterior => anterior.direccion === mapa.direccion ? { ...anterior, latitud, longitud } : anterior);
-        setMapa(null); setError('');
-      }} />}
-  </section>;
+      )}
+
+      {!cargando && form && (
+        <form onSubmit={guardar} aria-busy={guardando}>
+          <div
+            className={`own-alert ${suspendida ? 'own-alert-danger' : requiereRevision ? 'own-alert-warning' : 'own-alert-info'}`}
+            role="status"
+          >
+            <span>
+              {suspendida
+                ? '⛔ Esta sucursal se encuentra suspendida. Contacta al soporte de VetStec para revisar su situación.'
+                : requiereRevision
+                  ? '⚠️ Modificaste datos de identidad, ubicación o respaldo documental: al guardar, la sucursal pasará a revisión y se ocultará temporalmente del directorio hasta ser aprobada.'
+                  : 'ℹ️ Editar teléfono, correo de contacto o descripción mantiene tu estado de aprobación actual.'}
+            </span>
+          </div>
+
+          {actual.motivo_rechazo && (
+            <p className="own-alert own-alert-danger">
+              <span><strong>Motivo del rechazo anterior:</strong> {actual.motivo_rechazo}</span>
+            </p>
+          )}
+
+          <fieldset
+            className="own-fieldset"
+            disabled={guardando || suspendida || requiereRecarga}
+          >
+            <div className="own-form-panel">
+              <legend className="own-fieldset-legend">1. Identidad y contacto público</legend>
+              <div className="register-form-grid">
+                <label className="form-field">
+                  <span>Nombre del establecimiento *</span>
+                  <input
+                    name="nombreEstablecimiento"
+                    value={form.nombreEstablecimiento}
+                    onChange={cambiar}
+                    maxLength={150}
+                    required
+                  />
+                </label>
+
+                <label className="form-field">
+                  <span>Categoría de servicio *</span>
+                  <select name="tipoServicio" value={form.tipoServicio} onChange={cambiar} required>
+                    {Object.entries(nombres).map(([valor, nombre]) => (
+                      <option key={valor} value={valor}>{nombre}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="form-field">
+                  <span>Teléfono / WhatsApp (10 dígitos) *</span>
+                  <input
+                    type="tel"
+                    name="telefonoWhatsapp"
+                    value={form.telefonoWhatsapp}
+                    onChange={cambiar}
+                    pattern="[0-9]{10}"
+                    inputMode="numeric"
+                    maxLength={10}
+                    required
+                  />
+                </label>
+
+                <label className="form-field">
+                  <span>Correo de contacto *</span>
+                  <input
+                    type="email"
+                    name="correoContacto"
+                    value={form.correoContacto}
+                    onChange={cambiar}
+                    maxLength={150}
+                    required
+                  />
+                </label>
+
+                <label className="form-field form-field-full">
+                  <span>Descripción pública</span>
+                  <textarea
+                    name="descripcion"
+                    value={form.descripcion}
+                    onChange={cambiar}
+                    maxLength={2000}
+                    rows={4}
+                    placeholder="Describe tus especialidades, instalaciones o servicios destacados para los dueños de mascotas…"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="own-form-panel">
+              <h4 className="own-fieldset-legend">2. Dirección y punto en el mapa</h4>
+              {editandoDireccion ? (
+                <div className="register-form-grid">
+                  <div className="form-field-full own-subsection-head">
+                    <p style={{ margin: 0 }}>Ingresa la nueva dirección postal y confirma su ubicación exacta en el mapa.</p>
+                    <button
+                      type="button"
+                      className="own-btn own-btn-sm own-btn-secondary"
+                      onClick={conservarDireccion}
+                    >
+                      Restaurar dirección anterior
+                    </button>
+                  </div>
+                  <RegistrationAddress form={form} setForm={setForm} clearError={() => setError('')} />
+                </div>
+              ) : (
+                <div className="owner-edit-address">
+                  <p style={{ margin: '0 0 6px', fontWeight: 700 }}>
+                    📍 {form.direccion || 'Sin dirección registrada'}
+                  </p>
+                  <p style={{ margin: '0 0 14px', color: 'var(--muted)' }}>
+                    Código postal: <strong>{form.codigoPostal || '—'}</strong>
+                    {' · '}
+                    Coordenadas: {form.latitud === '' ? '—' : Number(form.latitud).toFixed(5)}, {form.longitud === '' ? '—' : Number(form.longitud).toFixed(5)}
+                  </p>
+                  <div className="own-row-actions">
+                    <button type="button" className="own-btn own-btn-secondary" onClick={cambiarDireccion}>
+                      Cambiar dirección postal
+                    </button>
+                    <button
+                      type="button"
+                      className="own-btn own-btn-secondary"
+                      disabled={!form.direccion}
+                      onClick={() => setMapa({
+                        direccion: form.direccion,
+                        latitud: form.latitud,
+                        longitud: form.longitud,
+                      })}
+                    >
+                      🗺️ Ajustar pin en el mapa
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="own-form-panel">
+              <h4 className="own-fieldset-legend">3. Respaldo profesional y verificación</h4>
+              <div className="register-form-grid">
+                {esVeterinaria && (
+                  <>
+                    <label className="form-field">
+                      <span>Médico veterinario responsable *</span>
+                      <input
+                        name="nombreResponsable"
+                        value={form.nombreResponsable}
+                        onChange={cambiar}
+                        maxLength={150}
+                        required
+                      />
+                    </label>
+                    <label className="form-field">
+                      <span>Cédula profesional *</span>
+                      <input
+                        name="cedulaProfesional"
+                        value={form.cedulaProfesional}
+                        onChange={cambiar}
+                        inputMode="numeric"
+                        pattern="[0-9]{1,30}"
+                        maxLength={30}
+                        required
+                      />
+                    </label>
+                  </>
+                )}
+
+                {form.tipoServicio === 'ESTETICA' && (
+                  <label className="form-field form-field-full">
+                    <span>{requiereFoto ? 'Fotografía actual del establecimiento *' : 'Actualizar fotografía de evidencia (opcional)'}</span>
+                    <small className="own-field-hint">
+                      {actual.tiene_evidencia ? '✓ Ya cuentas con una fotografía registrada. ' : ''}
+                      Si modificas el nombre, categoría o dirección, adjunta una fotografía reciente (JPG, PNG o WEBP, máx. 5 MB).
+                    </small>
+                    <input
+                      ref={fotoInput}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={seleccionarFoto}
+                    />
+                  </label>
+                )}
+
+                {form.evidencia && preview && (
+                  <div className="owner-edit-photo form-field-full">
+                    <img src={preview} alt="Nueva fotografía de la estética" />
+                    <div>
+                      <strong>{form.evidencia.name}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="own-btn own-btn-sm own-btn-secondary"
+                      onClick={() => {
+                        setForm(anterior => ({ ...anterior, evidencia: null }));
+                        if (fotoInput.current) fotoInput.current.value = '';
+                      }}
+                    >
+                      Quitar fotografía
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="own-form-footer">
+              <button type="button" className="own-btn own-btn-secondary" onClick={onCancelar}>
+                Cancelar
+              </button>
+              <button type="submit" className="own-btn own-btn-primary">
+                {guardando
+                  ? 'Guardando…'
+                  : requiereRevision
+                    ? 'Guardar y enviar a revisión'
+                    : '✓ Guardar cambios'}
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      )}
+
+      {mapa && (
+        <MapPicker
+          initialLat={mapa.latitud}
+          initialLng={mapa.longitud}
+          onClose={() => setMapa(null)}
+          onConfirm={({ latitud, longitud }) => {
+            setForm(anterior => anterior.direccion === mapa.direccion ? { ...anterior, latitud, longitud } : anterior);
+            setMapa(null);
+            setError('');
+          }}
+        />
+      )}
+    </section>
+  );
 }

@@ -11,12 +11,12 @@ async function migrar(pool) {
         id_negocio INTEGER NOT NULL REFERENCES configuracion_negocio(id) ON DELETE RESTRICT,
         id_admin INTEGER NOT NULL REFERENCES administradores_vetstec(id) ON DELETE RESTRICT,
         administrador_nombre VARCHAR(120) NOT NULL,
-        estado_anterior VARCHAR(20) NOT NULL CHECK (estado_anterior = 'PENDIENTE'),
-        estado_nuevo VARCHAR(20) NOT NULL CHECK (estado_nuevo IN ('APROBADO', 'RECHAZADO')),
+        estado_anterior VARCHAR(20) NOT NULL CHECK (estado_anterior IN ('PENDIENTE', 'APROBADO', 'RECHAZADO', 'SUSPENDIDO')),
+        estado_nuevo VARCHAR(20) NOT NULL CHECK (estado_nuevo IN ('PENDIENTE', 'APROBADO', 'RECHAZADO', 'SUSPENDIDO')),
         motivo TEXT,
         observaciones TEXT,
         fecha TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CHECK (estado_nuevo <> 'RECHAZADO' OR length(btrim(motivo)) >= 10 AND motivo IS NOT NULL)
+        CHECK (estado_nuevo NOT IN ('RECHAZADO', 'SUSPENDIDO') OR length(btrim(motivo)) >= 10 AND motivo IS NOT NULL)
       );
       CREATE INDEX IF NOT EXISTS idx_historial_revision_negocio_fecha
         ON historial_revision_negocio (id_negocio, fecha DESC, id DESC);

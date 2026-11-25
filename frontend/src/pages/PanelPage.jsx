@@ -5,35 +5,46 @@ import PanelPropietario from '../propietario/PanelPropietario';
 
 const ESTADOS = {
   PENDIENTE: {
-    titulo: 'Establecimiento pendiente de revisión',
-    texto: 'Tu correo ya está verificado. La solicitud de tu establecimiento está pendiente de revisión.',
-    clase: 'pending',
+    etiqueta: 'En revisión',
+    titulo: 'Tu establecimiento está en revisión',
+    texto: 'Tu correo ya fue verificado. El equipo de VetStec revisará tu información antes de habilitar las herramientas operativas y publicar tu ficha.',
+    tono: 'warning',
   },
   APROBADO: {
-    titulo: 'Establecimiento aprobado',
-    texto: 'La revisión de tu establecimiento fue aprobada.',
-    clase: 'approved',
+    etiqueta: 'Aprobado',
+    titulo: 'Establecimiento verificado y aprobado',
+    texto: 'Tu cuenta está activa para gestionar citas, servicios, catálogo y personal.',
+    tono: 'success',
   },
   RECHAZADO: {
-    titulo: 'Solicitud rechazada',
-    texto: 'Consulta el motivo de la revisión. Puedes comunicarte con VetStec desde Contacto.',
-    clase: 'restricted',
+    etiqueta: 'Requiere correcciones',
+    titulo: 'Solicitud con observaciones',
+    texto: 'Revisa el motivo indicado abajo y edita los datos de tu sucursal para enviarla nuevamente a revisión.',
+    tono: 'danger',
   },
   SUSPENDIDO: {
-    titulo: 'Establecimiento suspendido',
-    texto: 'Las operaciones del establecimiento están restringidas. Comunícate con VetStec desde Contacto.',
-    clase: 'restricted',
+    etiqueta: 'Suspendido',
+    titulo: 'Operaciones restringidas temporalmente',
+    texto: 'Comunícate con el equipo de soporte de VetStec desde la página de Contacto para revisar tu caso.',
+    tono: 'danger',
   },
 };
-const TIPOS = { VETERINARIA: 'Veterinaria', ESTETICA: 'Estética canina', AMBAS: 'Veterinaria y estética' };
+
+const TIPOS = {
+  VETERINARIA: { texto: 'Veterinaria', icono: '🩺' },
+  ESTETICA: { texto: 'Estética canina', icono: '✂️' },
+  AMBAS: { texto: 'Veterinaria y estética', icono: '🐾' },
+};
 
 export default function PanelPage() {
   const { sesion, cerrarSesion, comprobarSesion } = useAuth();
   const navigate = useNavigate();
   const [saliendo, setSaliendo] = useState(false);
+  const [comprobando, setComprobando] = useState(false);
   const [error, setError] = useState('');
   const { usuario, negocio } = sesion;
   const estado = ESTADOS[negocio.estado] || ESTADOS.PENDIENTE;
+  const tipo = TIPOS[negocio.tipoServicio] || { texto: 'Sin especificar', icono: '🏥' };
 
   async function salir() {
     if (saliendo) return;
@@ -48,55 +59,104 @@ export default function PanelPage() {
     }
   }
 
+  async function refrescarEstado() {
+    if (comprobando || saliendo) return;
+    setComprobando(true);
+    try {
+      await comprobarSesion();
+    } finally {
+      setComprobando(false);
+    }
+  }
+
   return (
-    <section className="account-panel" aria-labelledby="panel-title">
-      <div className="container panel-container">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Mi establecimiento</span>
-            <h1 id="panel-title">{negocio.nombre}</h1>
-            <p>Consulta los datos de tu cuenta y el estado del registro.</p>
+    <section className="account-panel owner-page" aria-labelledby="panel-title">
+      <div className="container owner-page-container">
+        <header className="own-topbar">
+          <div className="own-topbar-identity">
+            <div className="own-topbar-avatar" aria-hidden="true">
+              {tipo.icono}
+            </div>
+            <div className="own-topbar-copy">
+              <div className="own-topbar-kicker-row">
+                <span className="own-eyebrow">Panel del Propietario</span>
+                <span className={`own-badge own-badge-${estado.tono}`}>
+                  {estado.etiqueta}
+                </span>
+                <span className={`own-badge ${negocio.activoDirectorio ? 'own-badge-success' : 'own-badge-neutral'}`}>
+                  {negocio.activoDirectorio ? 'Visible en directorio' : 'No visible en directorio'}
+                </span>
+              </div>
+              <h1 id="panel-title">{negocio.nombre}</h1>
+              <div className="own-topbar-meta">
+                <span>{tipo.texto}</span>
+                <span aria-hidden="true">·</span>
+                <span>Cuenta verificada: <strong>{usuario.correo}</strong></span>
+              </div>
+            </div>
           </div>
-          <button className="button button-secondary" type="button" onClick={salir} disabled={saliendo}>
-            {saliendo ? 'Cerrando sesión…' : 'Cerrar sesión'}
-          </button>
-        </div>
-        {error && <p className="auth-error" role="alert">{error}</p>}
-        <section className={`panel-status ${estado.clase}`} aria-labelledby="review-title">
-          <span className="panel-status-label">Estado de la solicitud</span>
-          <h2 id="review-title">{estado.titulo}</h2>
-          <p>{estado.texto}</p>
-          {['RECHAZADO', 'SUSPENDIDO'].includes(negocio.estado) && negocio.motivoRechazo && (
-            <p className="panel-reason"><strong>Motivo:</strong> {negocio.motivoRechazo}</p>
-          )}
-          <button className="button button-secondary" type="button" onClick={comprobarSesion} disabled={saliendo}>
-            Actualizar estado
-          </button>
-        </section>
-        <div className="panel-grid">
-          <section className="panel-card" aria-labelledby="account-data-title">
-            <h2 id="account-data-title">Cuenta de acceso</h2>
-            <dl>
-              <div><dt>Correo</dt><dd>{usuario.correo}</dd></div>
-              <div><dt>Verificación del correo</dt><dd className="panel-verified">Completada</dd></div>
-            </dl>
-          </section>
-          <section className="panel-card" aria-labelledby="business-data-title">
-            <h2 id="business-data-title">Establecimiento</h2>
-            <dl>
-              <div><dt>Tipo de servicio</dt><dd>{TIPOS[negocio.tipoServicio] || 'Sin especificar'}</dd></div>
-              <div><dt>Publicación en el directorio</dt><dd>{negocio.activoDirectorio ? 'Activada' : 'No publicada'}</dd></div>
-            </dl>
-          </section>
-        </div>
-       <PanelPropietario />
-        <div className="panel-footer">
-          <p>La sesión termina después de 30 minutos sin actividad o al cumplir 8 horas desde el acceso.</p>
-          <div className="panel-links">
-            <Link to="/contacto">Contactar a VetStec</Link>
-            <Link to="/directorio">Ver directorio</Link>
+
+          <div className="own-topbar-actions">
+            <Link className="own-btn own-btn-ghost" to="/directorio">
+              Ver directorio público ↗
+            </Link>
+            <button
+              className="own-btn own-btn-secondary"
+              type="button"
+              onClick={salir}
+              disabled={saliendo}
+            >
+              {saliendo ? 'Cerrando sesión…' : 'Cerrar sesión'}
+            </button>
           </div>
-        </div>
+        </header>
+
+        {error && <p className="own-alert own-alert-danger" role="alert">{error}</p>}
+
+        {negocio.estado !== 'APROBADO' && (
+          <section
+            className={`own-status-banner own-status-${estado.tono}`}
+            aria-labelledby="review-title"
+          >
+            <div className="own-status-banner-body">
+              <span className="own-status-banner-kicker">Estado de verificación</span>
+              <h2 id="review-title">{estado.titulo}</h2>
+              <p>{estado.texto}</p>
+              {['RECHAZADO', 'SUSPENDIDO'].includes(negocio.estado) && negocio.motivoRechazo && (
+                <p className="own-status-reason">
+                  <strong>Motivo registrado:</strong> {negocio.motivoRechazo}
+                </p>
+              )}
+            </div>
+            <div className="own-status-banner-actions">
+              <button
+                className="own-btn own-btn-secondary"
+                type="button"
+                onClick={refrescarEstado}
+                disabled={saliendo || comprobando}
+              >
+                {comprobando ? 'Comprobando…' : 'Comprobar estado'}
+              </button>
+              {['RECHAZADO', 'SUSPENDIDO'].includes(negocio.estado) && (
+                <Link className="own-btn own-btn-ghost" to="/contacto">
+                  Contactar soporte
+                </Link>
+              )}
+            </div>
+          </section>
+        )}
+
+        <PanelPropietario />
+
+        <footer className="own-page-footer">
+          <p>
+            Por seguridad, tu sesión se cierra tras 30 minutos de inactividad o al cumplir 8 horas desde el inicio de sesión.
+          </p>
+          <div className="own-page-footer-links">
+            <Link to="/contacto">Soporte VetStec</Link>
+            <Link to="/directorio">Explorar directorio</Link>
+          </div>
+        </footer>
       </div>
     </section>
   );

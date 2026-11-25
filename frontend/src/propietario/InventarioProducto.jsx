@@ -124,7 +124,7 @@ export default function InventarioProducto({
       setAviso(
         respuesta.repetida
           ? 'La operación ya estaba registrada; no se duplicó.'
-          : 'Movimiento registrado.'
+          : 'Movimiento de inventario registrado.'
       );
       setDesde(0);
       setRecargar(n => n + 1);
@@ -144,166 +144,273 @@ export default function InventarioProducto({
     }
   }
 
+  const stockActual = datos?.producto?.stock_actual ?? producto.stock_actual ?? 0;
+  const stockMinimo = datos?.producto?.stock_minimo ?? producto.stock_minimo ?? 0;
+  const cantNum = Number(cantidad);
+  const stockProyectado = Number.isInteger(cantNum) && cantNum > 0
+    ? (tipo === 'ENTRADA' ? stockActual + cantNum : stockActual - cantNum)
+    : null;
+
   return (
-    <section className="owner-products">
-      <h4>Inventario: {producto.nombre_producto}</h4>
+    <section className="owner-products own-module">
+      <div className="own-module-header">
+        <div>
+          <span className="own-eyebrow">Control de existencias</span>
+          <h4>📦 {producto.nombre_producto}</h4>
+          {producto.codigo_barras && (
+            <p>Código: <code className="own-code-chip">{producto.codigo_barras}</code></p>
+          )}
+        </div>
 
-      <button
-        type="button"
-        className="button button-secondary"
-        disabled={guardando}
-        onClick={() => {
-          if (
-            pendiente &&
-            !window.confirm(
-              'El resultado no está confirmado. Si cierras, revisa el historial antes de registrar otra operación. ¿Cerrar?'
-            )
-          ) return;
+        <div className="own-module-actions">
+          <button
+            type="button"
+            className="own-btn own-btn-secondary"
+            disabled={guardando}
+            onClick={() => {
+              if (
+                pendiente &&
+                !window.confirm(
+                  'El resultado no está confirmado. Si cierras, revisa el historial antes de registrar otra operación. ¿Cerrar?'
+                )
+              ) return;
 
-          onCerrar();
-        }}
-      >
-        Cerrar inventario
-      </button>
+              onCerrar();
+            }}
+          >
+            ← Volver a productos
+          </button>
+        </div>
+      </div>
 
-      {error && <p className="owner-error" role="alert">{error}</p>}
-      {aviso && <p className="owner-success" role="status">{aviso}</p>}
-      {cargando && <p role="status">Consultando inventario…</p>}
+      {error && <p className="own-alert own-alert-danger" role="alert">{error}</p>}
+      {aviso && (
+        <div className="own-alert own-alert-success" role="status">
+          <span>✓ {aviso}</span>
+          <button type="button" className="own-alert-dismiss" onClick={() => setAviso('')} aria-label="Cerrar aviso">×</button>
+        </div>
+      )}
 
       {rechazado && (
-        <p>
-          La operación fue rechazada. Cierra inventario y vuelve a abrirlo
-          para revisar los datos antes de intentarlo otra vez.
-        </p>
+        <div className="own-alert own-alert-warning">
+          La operación fue rechazada. Vuelve a productos y abre nuevamente este inventario para sincronizar la existencia antes de reintentar.
+        </div>
       )}
 
       {pendiente && !guardando && (
-        <p>
-          El resultado no está confirmado. Usa “Comprobar operación”
-          para reenviar exactamente la misma solicitud sin duplicarla.
-        </p>
+        <div className="own-alert own-alert-warning">
+          El resultado quedó pendiente de confirmación. Pulsa <strong>Comprobar operación</strong> para verificarlo sin duplicar el movimiento.
+        </div>
+      )}
+
+      {cargando && (
+        <div className="own-loading-card" role="status">
+          <span className="own-spinner" aria-hidden="true" />
+          <span>Consultando existencias e historial…</span>
+        </div>
       )}
 
       {datos && !cargando && (
         <>
-          <p>
-            Existencia actual: <strong>{datos.producto.stock_actual}</strong>
-            {' · '}Mínimo: {datos.producto.stock_minimo}
-          </p>
+          <div className="own-stock-summary">
+            <div className="own-stock-box">
+              <span>Existencia actual</span>
+              <strong>{datos.producto.stock_actual}</strong>
+            </div>
+            <div className="own-stock-box">
+              <span>Stock mínimo</span>
+              <strong>{datos.producto.stock_minimo}</strong>
+            </div>
+            <div className="own-stock-box">
+              <span>Estado</span>
+              <div>
+                <span
+                  className={`own-badge ${
+                    stockActual === 0
+                      ? 'own-badge-danger'
+                      : stockActual <= stockMinimo
+                        ? 'own-badge-warning'
+                        : 'own-badge-success'
+                  }`}
+                >
+                  {stockActual === 0
+                    ? 'Sin existencias'
+                    : stockActual <= stockMinimo
+                      ? '⚠️ Stock bajo'
+                      : '✓ Óptimo'}
+                </span>
+              </div>
+            </div>
+          </div>
 
-          <form onSubmit={registrar}>
+          <form className="own-form-panel" onSubmit={registrar}>
             <fieldset
-              className="owner-edit-fields"
+              className="own-fieldset"
               disabled={guardando || Boolean(pendiente) || rechazado}
             >
-              <legend>Registrar movimiento</legend>
+              <legend className="own-fieldset-legend">Registrar movimiento de inventario</legend>
 
-              <label className="form-field">
-                <span>Tipo</span>
-                <select value={tipo} onChange={e => setTipo(e.target.value)}>
-                  <option value="ENTRADA">Entrada</option>
-                  <option value="SALIDA">Salida</option>
-                </select>
-              </label>
+              <div className="own-segmented" role="group" aria-label="Tipo de movimiento">
+                <button
+                  type="button"
+                  aria-pressed={tipo === 'ENTRADA'}
+                  className={`own-segment-btn ${tipo === 'ENTRADA' ? 'is-entrada' : ''}`}
+                  onClick={() => setTipo('ENTRADA')}
+                >
+                  📥 Entrada (+ sumar unidades)
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={tipo === 'SALIDA'}
+                  className={`own-segment-btn ${tipo === 'SALIDA' ? 'is-salida' : ''}`}
+                  onClick={() => setTipo('SALIDA')}
+                >
+                  📤 Salida (− descontar unidades)
+                </button>
+              </div>
 
-              <label className="form-field">
-                <span>Cantidad de unidades</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="2147483647"
-                  step="1"
-                  required
-                  value={cantidad}
-                  onChange={e => setCantidad(e.target.value)}
-                />
-              </label>
+              <div className="own-form-grid">
+                <label className="own-field">
+                  <span>Cantidad de unidades *</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="2147483647"
+                    step="1"
+                    required
+                    placeholder="Ej. 10"
+                    value={cantidad}
+                    onChange={e => setCantidad(e.target.value)}
+                  />
+                </label>
 
-              <label className="form-field">
-                <span>Motivo</span>
-                <input
-                  required
-                  maxLength={200}
-                  value={motivo}
-                  onChange={e => setMotivo(e.target.value)}
-                />
-              </label>
+                <label className="own-field">
+                  <span>Motivo del movimiento *</span>
+                  <input
+                    required
+                    maxLength={200}
+                    placeholder={tipo === 'ENTRADA' ? 'Ej. Compra a proveedor, reposición' : 'Ej. Venta en mostrador, uso interno, merma'}
+                    value={motivo}
+                    onChange={e => setMotivo(e.target.value)}
+                  />
+                </label>
+              </div>
 
-              <p>
-                Para corregir un conteo, registra únicamente la diferencia
-                como entrada o salida y explica el ajuste en el motivo.
+              <p className="own-field-hint">
+                {stockProyectado !== null ? (
+                  <>
+                    Resultado estimado tras guardar:{' '}
+                    <strong className={stockProyectado < 0 ? 'own-text-danger' : ''}>
+                      {stockProyectado} unidades
+                    </strong>.{' '}
+                  </>
+                ) : null}
+                Para corregir un conteo físico, ingresa únicamente la diferencia como entrada o salida.
               </p>
             </fieldset>
 
-            <button
-              type="submit"
-              className="button button-primary"
-              disabled={guardando || rechazado}
-            >
-              {guardando
-                ? 'Procesando…'
-                : pendiente
-                  ? 'Comprobar operación'
-                  : 'Registrar movimiento'}
-            </button>
+            <div className="own-form-footer">
+              <button
+                type="submit"
+                className="own-btn own-btn-primary"
+                disabled={guardando || rechazado || (stockProyectado !== null && stockProyectado < 0)}
+              >
+                {guardando
+                  ? 'Procesando…'
+                  : pendiente
+                    ? 'Comprobar operación'
+                    : tipo === 'ENTRADA'
+                      ? '+ Registrar entrada'
+                      : '− Registrar salida'}
+              </button>
+            </div>
           </form>
 
-          <h4>Historial del producto</h4>
-
-          {datos.movimientos.length === 0 ? (
-            <p>No hay movimientos registrados.</p>
-          ) : (
-            <div className="owner-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Fecha registrada</th>
-                    <th>Tipo</th>
-                    <th>Cantidad</th>
-                    <th>Antes</th>
-                    <th>Después</th>
-                    <th>Motivo</th>
-                    <th>Responsable</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {datos.movimientos.map(m => (
-                    <tr key={m.id}>
-                      <td>{m.fecha_movimiento || 'Sin fecha'}</td>
-                      <td>{m.tipo_movimiento}</td>
-                      <td>{m.cantidad}</td>
-                      <td>{m.stock_anterior ?? '—'}</td>
-                      <td>{m.stock_resultante ?? '—'}</td>
-                      <td>{m.motivo || 'Sin motivo'}</td>
-                      <td>
-                        {m.id_usuario_registro != null
-                          ? `Usuario #${m.id_usuario_registro}`
-                          : m.id_empleado != null
-                            ? `Empleado #${m.id_empleado}`
-                            : 'Sin registro'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="own-subsection">
+            <div className="own-subsection-head">
+              <div>
+                <h5>Historial de movimientos</h5>
+                <p>Registro cronológico de entradas, salidas y ajustes.</p>
+              </div>
             </div>
-          )}
 
-          <div className="owner-edit-actions">
-            <button
-              type="button"
-              disabled={guardando || Boolean(pendiente) || desde === 0}
-              onClick={() => setDesde(n => Math.max(0, n - 20))}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              disabled={guardando || Boolean(pendiente) || !datos.hayMas}
-              onClick={() => setDesde(n => n + 20)}
-            >
-              Siguiente
-            </button>
+            {datos.movimientos.length === 0 ? (
+              <div className="own-empty-box">
+                <p>Aún no hay movimientos registrados para este producto.</p>
+              </div>
+            ) : (
+              <div className="own-table-card">
+                <div className="owner-table-wrap">
+                  <table className="own-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Movimiento</th>
+                        <th>Unidades</th>
+                        <th>Cambio de stock</th>
+                        <th>Motivo</th>
+                        <th>Registrado por</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {datos.movimientos.map(m => {
+                        const esEntrada = m.tipo_movimiento === 'ENTRADA';
+                        return (
+                          <tr key={m.id}>
+                            <td>{m.fecha_movimiento || 'Sin fecha'}</td>
+                            <td>
+                              <span className={`own-badge ${esEntrada ? 'own-badge-success' : 'own-badge-danger'}`}>
+                                {esEntrada ? '📥 Entrada' : '📤 Salida'}
+                              </span>
+                            </td>
+                            <td>
+                              <strong>
+                                {esEntrada ? `+${m.cantidad}` : `-${m.cantidad}`}
+                              </strong>
+                            </td>
+                            <td>
+                              {m.stock_anterior ?? '—'} → <strong>{m.stock_resultante ?? '—'}</strong>
+                            </td>
+                            <td>{m.motivo || 'Sin motivo'}</td>
+                            <td>
+                              <small className="own-cell-sub">
+                                {m.id_usuario_registro != null
+                                  ? `Usuario #${m.id_usuario_registro}`
+                                  : m.id_empleado != null
+                                    ? `Empleado #${m.id_empleado}`
+                                    : 'Sistema'}
+                              </small>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="own-pagination">
+              <span className="own-pagination-meta">Mostrando bloques de hasta 20 movimientos</span>
+              <div className="own-pagination-buttons">
+                <button
+                  type="button"
+                  className="own-btn own-btn-sm own-btn-secondary"
+                  disabled={guardando || Boolean(pendiente) || desde === 0}
+                  onClick={() => setDesde(n => Math.max(0, n - 20))}
+                >
+                  ← Anterior
+                </button>
+                <button
+                  type="button"
+                  className="own-btn own-btn-sm own-btn-secondary"
+                  disabled={guardando || Boolean(pendiente) || !datos.hayMas}
+                  onClick={() => setDesde(n => n + 20)}
+                >
+                  Siguiente →
+                </button>
+              </div>
+            </div>
           </div>
         </>
       )}

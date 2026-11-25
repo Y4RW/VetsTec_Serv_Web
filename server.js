@@ -62,15 +62,18 @@ app.use(
   swaggerUi.setup(openapiDoc)
 );
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SECRET_KEY,
-  {
-    realtime: {
-      transport: WebSocket,
-    },
-  }
-);
+const supabase =
+  process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY
+    ? createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SECRET_KEY,
+        {
+          realtime: {
+            transport: WebSocket,
+          },
+        }
+      )
+    : null;
 
 const PORT = process.env.PORT || 3000;
 
@@ -86,7 +89,7 @@ const smtpTransporter = nodemailer.createTransport({
 });
 
 const emailTransporter = {
-  async sendMail({ from, to, subject, text, html }) {
+  async sendMail({ from, to, replyTo, subject, text, html }) {
     if (process.env.BREVO_API_KEY) {
       const senderEmail = process.env.EMAIL_USER || "no-reply@vetstec.com";
       const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -99,6 +102,7 @@ const emailTransporter = {
         body: JSON.stringify({
           sender: { name: "VetStec", email: senderEmail },
           to: [{ email: String(to).trim() }],
+          ...(replyTo ? { replyTo: { email: String(replyTo).trim() } } : {}),
           subject,
           textContent: text,
           ...(html ? { htmlContent: html } : {}),
@@ -110,9 +114,38 @@ const emailTransporter = {
       }
       return resp.json();
     }
-    return smtpTransporter.sendMail({ from, to, subject, text, html });
+    return smtpTransporter.sendMail({
+      from,
+      to,
+      ...(replyTo ? { replyTo } : {}),
+      subject,
+      text,
+      html,
+    });
   },
 };
+
+function obtenerCorreoContacto() {
+  return (process.env.CONTACT_EMAIL || process.env.EMAIL_USER || '').trim();
+}
+
+function correoContactoConfigurado() {
+  const destino = obtenerCorreoContacto();
+  if (!destino) return false;
+  return Boolean(
+    process.env.BREVO_API_KEY ||
+      (process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD)
+  );
+}
+
+function escaparHtml(valor) {
+  return String(valor ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /* =========================================================
    MIDDLEWARES
@@ -128,6 +161,10 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
   'http://localhost:8080',
   'http://127.0.0.1:8080',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  `http://localhost:${PORT}`,
+  `http://127.0.0.1:${PORT}`,
   ...(process.env.FRONTEND_URL
     ? [new URL(process.env.FRONTEND_URL).origin]
     : []),
@@ -395,7 +432,6 @@ app.get('/api/establecimientos', async (req, res) => {
         n.logo_url,
         n.latitud,
         n.longitud,
-        COALESCE(n.mostrar_productos_directorio, FALSE) AS mostrar_productos_directorio,
 
         COALESCE(
           json_agg(
@@ -426,27 +462,7 @@ app.get('/api/establecimientos', async (req, res) => {
             WHERE s.id_negocio = n.id
           ),
           '[]'::json
-        ) AS servicios,
-
-        COALESCE(
-          (
-            SELECT json_agg(
-              json_build_object(
-                'id', p.id,
-                'nombre', p.nombre_producto,
-                'tipo_uso', p.tipo_uso,
-                'precio', p.precio_venta,
-                'stock', p.stock_actual
-              )
-              ORDER BY p.nombre_producto ASC
-            )
-            FROM public.productos p
-            WHERE p.id_negocio = n.id
-              AND n.mostrar_productos_directorio = TRUE
-              AND p.stock_actual > 0
-          ),
-          '[]'::json
-        ) AS productos
+        ) AS servicios
 
       FROM configuracion_negocio n
 
@@ -1079,10 +1095,22 @@ app.post('/api/solicitudes-cita', async (req, res) => {
    CONTACTO PÚBLICO
    ========================================================= */
 
+app.get('/api/contacto/info', (req, res) => {
+  const correo = obtenerCorreoContacto();
+  res.json({
+    success: true,
+    data: {
+      correo: correo || null,
+      correoConfigurado: correoContactoConfigurado(),
+    },
+  });
+});
+
 app.post('/api/contacto', async (req, res) => {
   const {
     nombre,
     correo,
+    asunto,
     descripcion,
   } = req.body;
 
@@ -1095,6 +1123,11 @@ app.post('/api/contacto', async (req, res) => {
     typeof correo === 'string'
       ? correo.trim().toLowerCase()
       : '';
+
+  const asuntoLimpio =
+    typeof asunto === 'string' && asunto.trim()
+      ? asunto.trim().slice(0, 100)
+      : 'Consulta general';
 
   const descripcionLimpia =
     typeof descripcion === 'string'
@@ -1141,6 +1174,11 @@ app.post('/api/contacto', async (req, res) => {
     });
   }
 
+  const descripcionParaBd =
+    typeof asunto === 'string' && asunto.trim()
+      ? `[${asuntoLimpio}] ${descripcionLimpia}`.slice(0, 2000)
+      : descripcionLimpia;
+
   try {
     const result = await pool.query(
       `
@@ -1168,15 +1206,149 @@ app.post('/api/contacto', async (req, res) => {
       [
         nombreLimpio,
         correoLimpio,
-        descripcionLimpia,
+        descripcionParaBd,
       ]
     );
 
+    const registro = result.rows[0];
+    const correoDestino = obtenerCorreoContacto();
+    let correoEnviado = false;
+    let confirmacionEnviada = false;
+
+    if (correoContactoConfigurado()) {
+      const remitente = process.env.EMAIL_USER?.trim() || correoDestino;
+      const fechaTexto = new Date(registro.fecha_envio || Date.now()).toLocaleString(
+        'es-MX',
+        { dateStyle: 'medium', timeStyle: 'short' }
+      );
+      const htmlMensaje = escaparHtml(descripcionLimpia).replace(/\r?\n/g, '<br />');
+
+      try {
+        await emailTransporter.sendMail({
+          from: `"VetStec Contacto" <${remitente}>`,
+          to: correoDestino,
+          replyTo: correoLimpio,
+          subject: `[VetStec Contacto #${registro.id}] ${asuntoLimpio} — ${nombreLimpio}`,
+          text: [
+            `Nuevo mensaje recibido desde la página de Contacto de VetStec`,
+            `------------------------------------------------------------`,
+            `Folio: #${registro.id}`,
+            `Fecha: ${fechaTexto}`,
+            `Asunto: ${asuntoLimpio}`,
+            `Nombre: ${nombreLimpio}`,
+            `Correo del remitente: ${correoLimpio}`,
+            ``,
+            `Mensaje:`,
+            descripcionLimpia,
+            ``,
+            `Puedes responder directamente a este correo para contestar a ${nombreLimpio}.`,
+          ].join('\n'),
+          html: `
+            <div style="font-family:Arial,Helvetica,sans-serif;max-width:620px;margin:0 auto;color:#132842;background:#f7fafc;padding:24px;border-radius:14px;">
+              <div style="background:#14366b;color:#ffffff;padding:20px 24px;border-radius:12px 12px 0 0;">
+                <p style="margin:0;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#8ff0ec;font-weight:700;">VetStec · Comunicación Web</p>
+                <h2 style="margin:6px 0 0;font-size:20px;">Nuevo mensaje de contacto #${registro.id}</h2>
+              </div>
+              <div style="background:#ffffff;padding:24px;border:1px solid #dbe5f0;border-top:0;border-radius:0 0 12px 12px;">
+                <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px;">
+                  <tr>
+                    <td style="padding:6px 0;color:#4b5b70;width:130px;"><strong>Asunto:</strong></td>
+                    <td style="padding:6px 0;color:#0d2449;">${escaparHtml(asuntoLimpio)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0;color:#4b5b70;"><strong>Nombre:</strong></td>
+                    <td style="padding:6px 0;color:#0d2449;">${escaparHtml(nombreLimpio)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0;color:#4b5b70;"><strong>Correo:</strong></td>
+                    <td style="padding:6px 0;"><a href="mailto:${escaparHtml(correoLimpio)}" style="color:#097371;font-weight:700;">${escaparHtml(correoLimpio)}</a></td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0;color:#4b5b70;"><strong>Fecha:</strong></td>
+                    <td style="padding:6px 0;color:#0d2449;">${escaparHtml(fechaTexto)}</td>
+                  </tr>
+                </table>
+                <div style="padding:16px;background:#f4f8fc;border-left:4px solid #0e9f9d;border-radius:8px;line-height:1.6;font-size:15px;">
+                  ${htmlMensaje}
+                </div>
+                <p style="margin:18px 0 0;font-size:12px;color:#4b5b70;">
+                  Responde directamente a este correo para comunicarte con <strong>${escaparHtml(nombreLimpio)}</strong>.
+                </p>
+              </div>
+            </div>
+          `,
+        });
+
+        correoEnviado = true;
+
+        if (correoLimpio !== correoDestino.toLowerCase()) {
+          try {
+            await emailTransporter.sendMail({
+              from: `"VetStec" <${remitente}>`,
+              to: correoLimpio,
+              replyTo: correoDestino,
+              subject: `Recibimos tu mensaje (#${registro.id}) — VetStec`,
+              text: [
+                `Hola ${nombreLimpio},`,
+                ``,
+                `Confirmamos que recibimos tu mensaje en VetStec (Folio #${registro.id}).`,
+                `Asunto: ${asuntoLimpio}`,
+                ``,
+                `Tu mensaje:`,
+                descripcionLimpia,
+                ``,
+                `Nuestro equipo revisará tu solicitud y te responderá a la brevedad desde ${correoDestino}.`,
+                ``,
+                `Equipo VetStec`,
+              ].join('\n'),
+              html: `
+                <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#132842;background:#f7fafc;padding:24px;border-radius:14px;">
+                  <div style="background:#14366b;color:#ffffff;padding:20px 24px;border-radius:12px 12px 0 0;">
+                    <p style="margin:0;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#8ff0ec;font-weight:700;">VetStec</p>
+                    <h2 style="margin:6px 0 0;font-size:20px;">Hemos recibido tu mensaje</h2>
+                  </div>
+                  <div style="background:#ffffff;padding:24px;border:1px solid #dbe5f0;border-top:0;border-radius:0 0 12px 12px;line-height:1.6;">
+                    <p style="margin:0 0 12px;">Hola <strong>${escaparHtml(nombreLimpio)}</strong>,</p>
+                    <p style="margin:0 0 16px;">Gracias por comunicarte con VetStec. Tu mensaje quedó registrado con el folio <strong>#${registro.id}</strong> bajo el motivo <strong>${escaparHtml(asuntoLimpio)}</strong>.</p>
+                    <div style="padding:14px 16px;background:#f4f8fc;border-left:4px solid #0e9f9d;border-radius:8px;margin-bottom:16px;font-size:14px;">
+                      ${htmlMensaje}
+                    </div>
+                    <p style="margin:0;font-size:13px;color:#4b5b70;">
+                      Te responderemos a la brevedad desde <a href="mailto:${escaparHtml(correoDestino)}" style="color:#097371;font-weight:700;">${escaparHtml(correoDestino)}</a>.
+                    </p>
+                  </div>
+                </div>
+              `,
+            });
+            confirmacionEnviada = true;
+          } catch (confirmError) {
+            console.warn(
+              'Aviso al enviar acuse de contacto al remitente:',
+              confirmError.message
+            );
+          }
+        }
+      } catch (mailError) {
+        console.error(
+          '❌ Error enviando correo de contacto:',
+          mailError.message
+        );
+      }
+    } else {
+      console.warn(
+        '⚠️ Mensaje de contacto guardado en BD, pero falta configurar EMAIL_USER y EMAIL_APP_PASSWORD (o BREVO_API_KEY) para notificar por correo.'
+      );
+    }
+
     res.status(201).json({
       success: true,
-      message:
-        'Tu mensaje fue enviado correctamente.',
-      data: result.rows[0],
+      correoEnviado,
+      confirmacionEnviada,
+      correoDestino: correoDestino || null,
+      message: correoEnviado
+        ? 'Tu mensaje fue enviado correctamente al correo oficial de VetStec.'
+        : 'Tu mensaje quedó guardado correctamente, pero no se pudo enviar la notificación por correo en este momento.',
+      data: registro,
     });
   } catch (error) {
     console.error(
@@ -1537,6 +1709,45 @@ app.post(
         ]
       );
 
+      // ==========================================
+      // RED Y ACCESO DE PROPIETARIO
+      // ==========================================
+
+      const redResult = await client.query(
+        `
+        INSERT INTO public.redes_negocio (nombre)
+        VALUES ($1)
+        RETURNING id
+        `,
+        [nombreEstablecimiento.trim()]
+      );
+
+      const idRed = redResult.rows[0].id;
+
+      await client.query(
+        `
+        INSERT INTO public.redes_sucursales (
+          id_red,
+          id_negocio,
+          es_principal
+        )
+        VALUES ($1, $2, TRUE)
+        `,
+        [idRed, idNegocio]
+      );
+
+      await client.query(
+        `
+        INSERT INTO public.redes_propietarios (
+          id_red,
+          id_usuario,
+          activo
+        )
+        VALUES ($1, $2, TRUE)
+        `,
+        [idRed, usuarioResult.rows[0].id]
+      );
+
       await client.query("COMMIT");
 
       let correoEnviado = true;
@@ -1661,6 +1872,12 @@ require('./routes/productosPrivados')(app, {
 
   require('./routes/solicitudesAdmin')(app, { pool, supabase });
 
+  require('./routes/asistenteIA')(app, {
+    pool,
+    requireSesion,
+    obtenerCorreoContacto,
+  });
+
 /* =========================================================
    404 PARA RUTAS API INEXISTENTES
    ========================================================= */
@@ -1722,8 +1939,71 @@ app.use((error, req, res, next) => {
    ========================================================= */
 
 async function startServer() {
+  if (
+    !process.env.DATABASE_URL ||
+    process.env.DATABASE_URL.includes('USUARIO:CONTRASENA@HOST')
+  ) {
+    console.error(
+      '❌ Falta configurar DATABASE_URL con credenciales reales en VetsTec_Serv_Web/.env (reemplaza los valores de ejemplo de Supabase/PostgreSQL).'
+    );
+    process.exit(1);
+  }
+
   try {
     await pool.query('SELECT 1');
+
+    // Permite registrar decisiones desde cualquier estado y desbloquea cuentas
+    // registradas antes de que el alta creara su red de propietario automáticamente.
+    await pool
+      .query(`
+        DO $$
+        DECLARE
+          rec RECORD;
+          nueva_red BIGINT;
+        BEGIN
+          IF to_regclass('public.historial_revision_negocio') IS NOT NULL THEN
+            ALTER TABLE public.historial_revision_negocio
+              DROP CONSTRAINT IF EXISTS historial_revision_negocio_estado_anterior_check,
+              DROP CONSTRAINT IF EXISTS historial_revision_negocio_estado_nuevo_check;
+            ALTER TABLE public.historial_revision_negocio
+              ADD CONSTRAINT historial_revision_negocio_estado_anterior_check
+                CHECK (estado_anterior IN ('PENDIENTE', 'APROBADO', 'RECHAZADO', 'SUSPENDIDO')),
+              ADD CONSTRAINT historial_revision_negocio_estado_nuevo_check
+                CHECK (estado_nuevo IN ('PENDIENTE', 'APROBADO', 'RECHAZADO', 'SUSPENDIDO'));
+          END IF;
+
+          IF to_regclass('public.redes_negocio') IS NOT NULL
+             AND to_regclass('public.redes_sucursales') IS NOT NULL
+             AND to_regclass('public.redes_propietarios') IS NOT NULL THEN
+            FOR rec IN
+              SELECT DISTINCT ON (n.id)
+                n.id AS id_negocio,
+                n.nombre_establecimiento,
+                u.id AS id_usuario
+              FROM public.configuracion_negocio n
+              JOIN public.usuarios_negocio u ON u.id_negocio = n.id
+              LEFT JOIN public.redes_sucursales s ON s.id_negocio = n.id
+              WHERE s.id_negocio IS NULL
+              ORDER BY n.id, u.correo_verificado DESC, u.activo DESC, u.id ASC
+            LOOP
+              INSERT INTO public.redes_negocio (nombre)
+              VALUES (COALESCE(NULLIF(BTRIM(rec.nombre_establecimiento), ''), 'Negocio ' || rec.id_negocio))
+              RETURNING id INTO nueva_red;
+
+              INSERT INTO public.redes_sucursales (id_red, id_negocio, es_principal)
+              VALUES (nueva_red, rec.id_negocio, TRUE)
+              ON CONFLICT (id_negocio) DO NOTHING;
+
+              INSERT INTO public.redes_propietarios (id_red, id_usuario, activo)
+              VALUES (nueva_red, rec.id_usuario, TRUE)
+              ON CONFLICT (id_red) DO NOTHING;
+            END LOOP;
+          END IF;
+        END $$;
+      `)
+      .catch((err) => {
+        console.warn('Aviso en verificación inicial de tablas:', err.message);
+      });
 
     console.log(
       '✅ PostgreSQL conectado correctamente'
